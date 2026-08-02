@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.ps.user-token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consent — Person Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Consent</span>
+    <span class="spacer"></span>
+    <a href="index.html">Home</a>
+    <a href="user.html">My missions</a>
+  </header>
+
+  <main>
+    <div class="card" id="consent-card">Loading…</div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    const card = document.getElementById("consent-card");
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    const callback = params.get("callback");
+
+    function askForCode() {
+      const input = el("input", { class: "field", name: "code", placeholder: "interaction code", autofocus: "" });
+      card.replaceChildren(
+        el("h2", {}, "Enter an interaction code"),
+        el("p", { class: "hint" },
+          "An agent that needs your approval shares a short code (also linked from the admin console's pending list)."),
+        el("form", {
+          onsubmit: (event) => {
+            event.preventDefault();
+            const value = input.value.trim();
+            if (value) {
+              location.search = "?code=" + encodeURIComponent(value);
+            }
+          },
+        }, el("div", { class: "toolbar" }, input, el("button", { class: "btn" }, "Open"))),
+      );
+    }
+
+    function factRows(context) {
+      const mission = context.mission;
+      const rows = [];
+      const add = (label, value) => {
+        if (value !== null && value !== undefined && value !== "") {
+          rows.push(el("dt", {}, label), el("dd", {}, value));
+        }
+      };
+      add("Agent", context.agent_name);
+      add("Request kind", pill(context.pending_kind || "token"));
+      add("Interaction type", context.interaction_type);
+      if (mission) {
+        add("Mission", mission.description);
+        add("Mission hash", el("span", { class: "mono" }, shortId(mission.s256, 24)));
+        if (mission.approved_tools && mission.approved_tools.length) {
+          add("Approved tools", el("ul", { class: "scope-list" },
+            mission.approved_tools.map((tool) => el("li", {}, tool.name + " — " + tool.description))));
+        }
+      }
+      if (context.scopes && context.scopes.length) {
+        add("Requested scopes", el("ul", { class: "scope-list" },
+          context.scopes.map((scope) => el("li", { class: "mono" }, scope))));
+      }
+      add("Justification", context.justification);
+      add("Resource", context.resource_name);
+      add("Resource issuer", context.resource_iss && el("span", { class: "mono" }, context.resource_iss));
+      add("Resource scope", context.resource_scope && el("span", { class: "mono" }, context.resource_scope));
+      add("Action", context.permission_action);
+      add("Action description", context.permission_description);
+      if (context.permission_parameters) {
+        add("Action parameters", el("pre", { class: "mono" }, JSON.stringify(context.permission_parameters, null, 2)));
+      }
+      add("Summary", context.summary);
+      add("Evaluator note", context.evaluator_reason);
+      if (context.clarification_responses && context.clarification_responses.length) {
+        add("Agent clarifications", el("ul", { class: "scope-list" },
+          context.clarification_responses.map((entry) => el("li", {}, entry))));
+      }
+      return rows;
+    }
+
+    async function decide(pendingId, decision) {
+      const result = await api("/consent/" + encodeURIComponent(pendingId) + "/decision", {
+        method: "POST",
+        body: decision,
+        noAuth: true,
+      });
+      if (result && result.redirect_url) {
+        location.assign(result.redirect_url);
+        return;
+      }
+      card.replaceChildren(
+        el("h2", {}, decision.approved ? "Approved" : decision.clarification_question ? "Clarification requested" : "Denied"),
+        el("p", { class: "hint" }, "The agent will pick this up on its next poll. You can close this page."),
+      );
+    }
+
+    function renderDecision(context) {
+      const actions = el("div", { class: "consent-actions" });
+      const clarify = el("textarea", { class: "field", name: "clarification_question", rows: "2", placeholder: "What do you need the agent to clarify?" });
+
+      if (context.question) {
+        const answer = el("textarea", { class: "field", name: "answer_text", rows: "2", placeholder: "Your answer" });
+        actions.append(
+          el("div", { style: "flex-basis: 100%" },
+            el("p", {}, el("strong", {}, "The agent asks: "), context.question), answer),
+          el("button", { class: "btn", onclick: () =>
+            act(() => decide(context.pending_id, { approved: true, answer_text: answer.value.trim() })) }, "Send answer"),
+        );
+      }
+
+      actions.append(
+        el("button", { class: "btn", onclick: () =>
+          act(() => decide(context.pending_id, { approved: true })) }, "Approve"),
+        el("button", { class: "btn danger ghost", onclick: () =>
+          act(() => decide(context.pending_id, { approved: false })) }, "Deny"),
+      );
+
+      return el("div", {},
+        actions,
+        el("details", { class: "raw" },
+          el("summary", {}, "Ask the agent to clarify instead"),
+          clarify,
+          el("div", { class: "consent-actions" },
+            el("button", { class: "btn ghost", onclick: () => {
+              const question = clarify.value.trim();
+              if (question) {
+                act(() => decide(context.pending_id, { approved: false, clarification_question: question }));
+              }
+            } }, "Request clarification"))),
+      );
+    }
+
+    async function load() {
+      let query = "?code=" + encodeURIComponent(code);
+      if (callback) {
+        query += "&callback=" + encodeURIComponent(callback);
+      }
+      const context = await api("/consent" + query, { noAuth: true });
+      card.replaceChildren(
+        el("h2", {}, "An agent needs your decision"),
+        el("p", { class: "hint" }, "Review the request below, then approve or deny it."),
+        el("dl", { class: "facts" }, factRows(context)),
+        renderDecision(context),
+        el("details", { class: "raw" },
+          el("summary", {}, "Raw request"),
+          el("pre", {}, JSON.stringify(context, null, 2))),
+      );
+    }
+
+    if (!code) {
+      askForCode();
+    } else {
+      load().catch((error) => {
+        card.replaceChildren(
+          el("h2", {}, "Request unavailable"),
+          el("p", { class: "hint" }, error.message),
+          el("p", {}, el("a", { href: "consent.html" }, "Enter a different code")),
+        );
+      });
+    }
+  </script>
+</body>
+</html>

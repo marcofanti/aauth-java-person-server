@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.as.person-token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registrations — Agent Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Registrations</span>
+    <span class="spacer"></span>
+    <span class="tokenbox">
+      <label for="token">Person token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="AAUTH_AS_PERSON_TOKEN">
+    </span>
+    <a href="index.html">Home</a>
+    <a href="agents.html">Agents</a>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Pending agent registrations</h2>
+      <p class="hint">Agents that asked this server for an identity. Approve to create
+      a new binding, or link the device key to an existing agent.</p>
+      <div class="toolbar">
+        <button class="btn ghost small" id="refresh">Refresh</button>
+      </div>
+      <div id="registrations-table">Loading…</div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    async function loadRegistrations() {
+      const rows = (await api("/person/registrations")).map((row) =>
+        el("tr", {},
+          el("td", {}, row.agent_name),
+          el("td", { class: "mono", title: row.stable_jkt }, shortId(row.stable_jkt, 16)),
+          el("td", {}, row.created_at),
+          el("td", {}, row.expires_at),
+          el("td", {}, pill(row.status)),
+          el("td", {},
+            el("button", { class: "btn small", onclick: () =>
+              act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/approve", { method: "POST" })
+                .then((result) => banner("Approved as " + result.agent_id)), loadRegistrations) }, "Approve"),
+            " ",
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/deny", { method: "POST" }),
+                loadRegistrations) }, "Deny"),
+            " ",
+            el("button", { class: "btn ghost small", onclick: () => {
+              const agentId = prompt("Link this device key to which existing agent_id?");
+              if (agentId) {
+                act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/link", {
+                  method: "POST",
+                  body: { agent_id: agentId.trim() },
+                }), loadRegistrations);
+              }
+            } }, "Link"))));
+      document.getElementById("registrations-table").replaceChildren(
+        dataTable(["Agent name", "Stable key", "Requested", "Expires", "Status", ""], rows));
+    }
+
+    document.getElementById("refresh").addEventListener("click", () =>
+      loadRegistrations().catch((error) => banner(error.message, true)));
+    document.addEventListener("token-changed", () =>
+      loadRegistrations().catch((error) => banner(error.message, true)));
+
+    initTokenBox();
+    loadRegistrations().catch((error) => banner(error.message, true));
+  </script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Person Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Person Server</span>
+    <span class="subtitle">standalone</span>
+    <span class="spacer"></span>
+    <a href="admin.html">Admin</a>
+    <a href="user.html">My missions</a>
+    <a href="consent.html">Consent</a>
+  </header>
+
+  <main>
+    <div class="home-links">
+      <a class="card" href="admin.html">
+        <h2>Admin</h2>
+        <p class="hint">Missions, pending requests, consent scopes, and the
+        Agent Server trust registry.</p>
+      </a>
+      <a class="card" href="user.html">
+        <h2>My missions</h2>
+        <p class="hint">Your missions and the consent requests waiting on you.</p>
+      </a>
+      <a class="card" href="consent.html">
+        <h2>Consent</h2>
+        <p class="hint">Decide an agent's pending request using an interaction code.</p>
+      </a>
+    </div>
+
+    <div class="card">
+      <h2>Server metadata</h2>
+      <div id="metadata">Loading…</div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    api("/.well-known/aauth-person.json", { noAuth: true })
+      .then((person) => {
+        document.getElementById("metadata").replaceChildren(
+          el("dl", { class: "facts" },
+            el("dt", {}, "Issuer"), el("dd", { class: "mono" }, person.issuer),
+            el("dt", {}, "Token endpoint"), el("dd", { class: "mono" }, person.token_endpoint),
+            el("dt", {}, "Mission endpoint"), el("dd", { class: "mono" }, person.mission_endpoint),
+            el("dt", {}, "JWKS"), el("dd", { class: "mono" }, person.jwks_uri)),
+          el("details", { class: "raw" },
+            el("summary", {}, "Raw document"),
+            el("pre", {}, JSON.stringify(person, null, 2))),
+        );
+      })
+      .catch((error) => {
+        document.getElementById("metadata").replaceChildren(
+          el("span", { class: "hint" }, "Metadata unavailable: " + error.message));
+      });
+  </script>
+</body>
+</html>

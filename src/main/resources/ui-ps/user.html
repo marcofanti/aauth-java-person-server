@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.ps.user-token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My missions — Person Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">My missions</span>
+    <span class="spacer"></span>
+    <span class="tokenbox">
+      <label for="token">User token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="AAUTH_PS_USER_TOKEN">
+    </span>
+    <a href="index.html">Home</a>
+    <a href="admin.html">Admin</a>
+  </header>
+
+  <main>
+    <nav class="tabs">
+      <button data-panel="queue">Consent queue</button>
+      <button data-panel="missions">Missions</button>
+    </nav>
+
+    <section class="card" data-panel-body="queue" hidden>
+      <h2>Consent queue</h2>
+      <p class="hint">Requests assigned to you that need a decision.</p>
+      <div id="queue-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="missions" hidden>
+      <h2>Missions</h2>
+      <p class="hint">Missions you own. Terminating a mission stops further token
+      issuance against it.</p>
+      <div id="missions-table">Loading…</div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    async function loadQueue() {
+      const rows = (await api("/user/consent")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, shortId(row.pending_id)),
+          el("td", {}, row.kind),
+          el("td", { class: "mono" }, shortId(row.agent_id, 20)),
+          el("td", {}, row.code
+            ? el("a", { href: "consent.html?code=" + encodeURIComponent(row.code) }, "Open consent")
+            : "—")));
+      document.getElementById("queue-table").replaceChildren(
+        dataTable(["Pending", "Kind", "Agent", ""], rows));
+    }
+
+    async function showMissionDetail(s256, cell) {
+      const detail = await api("/user/missions/" + encodeURIComponent(s256));
+      cell.replaceChildren(el("details", { class: "raw", open: "" },
+        el("summary", {}, "Detail + log"),
+        el("pre", {}, JSON.stringify(detail, null, 2))));
+    }
+
+    async function loadMissions() {
+      const missions = await api("/user/missions");
+      const rows = missions.map((mission) => {
+        const detailCell = el("td", { colspan: "5" });
+        const mainRow = el("tr", {},
+          el("td", { class: "mono", title: mission.s256 }, shortId(mission.s256)),
+          el("td", {}, mission.description),
+          el("td", {}, pill(mission.state)),
+          el("td", { class: "mono" }, shortId(mission.agent, 26)),
+          el("td", {},
+            el("button", { class: "btn ghost small", onclick: () =>
+              act(() => showMissionDetail(mission.s256, detailCell)) }, "Detail"),
+            " ",
+            mission.state === "active"
+              ? el("button", { class: "btn danger ghost small", onclick: () =>
+                  act(() => api("/user/missions/" + encodeURIComponent(mission.s256), {
+                    method: "PATCH",
+                    body: { state: "terminated" },
+                  }), loadMissions) }, "Terminate")
+              : null));
+        return [mainRow, el("tr", {}, detailCell)];
+      });
+      document.getElementById("missions-table").replaceChildren(
+        dataTable(["Mission", "Description", "State", "Agent", ""], rows.flat()));
+    }
+
+    initTokenBox();
+    initTabs({ queue: loadQueue, missions: loadMissions });
+  </script>
+</body>
+</html>

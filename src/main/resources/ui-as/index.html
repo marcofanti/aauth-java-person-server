@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Agent Server</span>
+    <span class="subtitle">standalone</span>
+    <span class="spacer"></span>
+    <a href="registrations.html">Registrations</a>
+    <a href="agents.html">Agents</a>
+  </header>
+
+  <main>
+    <div class="home-links">
+      <a class="card" href="registrations.html">
+        <h2>Registrations</h2>
+        <p class="hint">Agents waiting for you to approve, deny, or link their
+        registration.</p>
+      </a>
+      <a class="card" href="agents.html">
+        <h2>Agents</h2>
+        <p class="hint">Bindings this server vouches for, their device keys, and
+        revocation.</p>
+      </a>
+    </div>
+
+    <div class="card">
+      <h2>Server metadata</h2>
+      <div id="metadata">Loading…</div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    api("/.well-known/aauth-agent.json", { noAuth: true })
+      .then((agent) => {
+        document.getElementById("metadata").replaceChildren(
+          el("dl", { class: "facts" },
+            el("dt", {}, "Issuer"), el("dd", { class: "mono" }, agent.issuer),
+            el("dt", {}, "Client name"), el("dd", {}, agent.client_name),
+            el("dt", {}, "Registration endpoint"), el("dd", { class: "mono" }, agent.registration_endpoint),
+            el("dt", {}, "Refresh endpoint"), el("dd", { class: "mono" }, agent.refresh_endpoint),
+            el("dt", {}, "JWKS"), el("dd", { class: "mono" }, agent.jwks_uri)),
+          el("details", { class: "raw" },
+            el("summary", {}, "Raw document"),
+            el("pre", {}, JSON.stringify(agent, null, 2))),
+        );
+      })
+      .catch((error) => {
+        document.getElementById("metadata").replaceChildren(
+          el("span", { class: "hint" }, "Metadata unavailable: " + error.message));
+      });
+  </script>
+</body>
+</html>

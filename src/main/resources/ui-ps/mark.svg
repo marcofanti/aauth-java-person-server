@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Original mark for aauth-java-person-server: a person silhouette doubling as a key. -->
+  <rect width="32" height="32" rx="7" fill="#1d4ed8"/>
+  <circle cx="16" cy="11.5" r="4.5" fill="none" stroke="#ffffff" stroke-width="2.4"/>
+  <path d="M16 16v10" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M16 21.5h4.5M16 25h3" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

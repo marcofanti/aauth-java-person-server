@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # io.github.marcofanti:aauth is not on Maven Central — build the pinned
+      # release from source and install it into the local repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: marcofanti/aauth-java-library
+          ref: v0.1.1
+          path: aauth-java-library
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+
+      - name: Install aauth-java-library
+        run: mvn -q -DskipTests install
+        working-directory: aauth-java-library
+
+      - name: Verify (tests, coverage gate, Spotless)
+        run: mvn verify
+
+      - name: Demo smoke test (end-to-end flows via AUTO mode)
+        run: |
+          demo/run-demo.sh > server.log 2>&1 &
+          server_pid=$!
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8765/.well-known/aauth-person.json && break
+            sleep 1
+          done
+          AUTO=1 demo/demo.sh
+          kill "$server_pid"
+
+      - name: Server log on failure
+        if: failure()
+        run: cat server.log || true

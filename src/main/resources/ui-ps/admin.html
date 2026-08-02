@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.ps.admin-token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Person Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Admin</span>
+    <span class="spacer"></span>
+    <span class="tokenbox">
+      <label for="token">Admin token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="AAUTH_PS_ADMIN_TOKEN">
+    </span>
+    <a href="index.html">Home</a>
+    <a href="user.html">My missions</a>
+  </header>
+
+  <main>
+    <nav class="tabs">
+      <button data-panel="missions">Missions</button>
+      <button data-panel="pending">Pending</button>
+      <button data-panel="scopes">Consent scopes</button>
+      <button data-panel="trust">Trusted servers</button>
+    </nav>
+
+    <section class="card" data-panel-body="missions" hidden>
+      <h2>Missions</h2>
+      <p class="hint">Approved agent missions. Terminating a mission stops further
+      token issuance against it.</p>
+      <div class="toolbar">
+        <label for="mission-state">State</label>
+        <select id="mission-state" class="field">
+          <option value="">all</option>
+          <option value="active">active</option>
+          <option value="terminated">terminated</option>
+        </select>
+      </div>
+      <div id="missions-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="pending" hidden>
+      <h2>Open pending requests</h2>
+      <p class="hint">Every deferred agent request this server is holding.
+      Requests waiting on a person link to the consent page.</p>
+      <div id="pending-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="scopes" hidden>
+      <h2>Consent scopes</h2>
+      <p class="hint">Resource-token scopes that always require explicit consent.</p>
+      <div class="toolbar">
+        <input id="scope-input" class="field" placeholder="scope, e.g. payments:write">
+        <button class="btn" id="scope-add">Add</button>
+      </div>
+      <div id="scopes-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="trust" hidden>
+      <h2>Trusted agent servers</h2>
+      <p class="hint">Agent Server issuers whose agent tokens this Person Server accepts.</p>
+      <div class="toolbar">
+        <input id="trust-issuer" class="field" placeholder="issuer URL">
+        <input id="trust-name" class="field" placeholder="display name (optional)">
+        <button class="btn" id="trust-add">Add</button>
+      </div>
+      <div id="trust-table">Loading…</div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    async function showMissionDetail(s256, cell) {
+      const detail = await api("/missions/" + encodeURIComponent(s256));
+      cell.replaceChildren(el("details", { class: "raw", open: "" },
+        el("summary", {}, "Detail + log"),
+        el("pre", {}, JSON.stringify(detail, null, 2))));
+    }
+
+    async function loadMissions() {
+      const state = document.getElementById("mission-state").value;
+      const missions = await api("/missions" + (state ? "?state=" + encodeURIComponent(state) : ""));
+      const rows = missions.map((mission) => {
+        const detailCell = el("td", { colspan: "6" });
+        const mainRow = el("tr", {},
+          el("td", { class: "mono", title: mission.s256 }, shortId(mission.s256)),
+          el("td", {}, mission.description),
+          el("td", {}, pill(mission.state)),
+          el("td", { class: "mono" }, shortId(mission.agent, 26)),
+          el("td", {}, mission.owner_id ?? "—"),
+          el("td", {},
+            el("button", { class: "btn ghost small", onclick: () =>
+              act(() => showMissionDetail(mission.s256, detailCell)) }, "Detail"),
+            " ",
+            mission.state === "active"
+              ? el("button", { class: "btn danger ghost small", onclick: () =>
+                  act(() => api("/missions/" + encodeURIComponent(mission.s256), {
+                    method: "PATCH",
+                    body: { state: "terminated" },
+                  }), loadMissions) }, "Terminate")
+              : null));
+        return [mainRow, el("tr", {}, detailCell)];
+      });
+      document.getElementById("missions-table").replaceChildren(
+        dataTable(["Mission", "Description", "State", "Agent", "Owner", ""], rows.flat()));
+    }
+
+    async function loadPending() {
+      const rows = (await api("/admin/pending")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, shortId(row.pending_id)),
+          el("td", {}, row.kind),
+          el("td", {}, pill(row.status)),
+          el("td", {}, row.requirement ?? "—"),
+          el("td", { class: "mono" }, shortId(row.agent_id, 20)),
+          el("td", {}, row.justification ?? "—"),
+          el("td", { class: "mono" }, row.resource_scope ?? "—"),
+          el("td", {}, row.code
+            ? el("a", { href: "consent.html?code=" + encodeURIComponent(row.code) }, "Open consent")
+            : "—")));
+      document.getElementById("pending-table").replaceChildren(
+        dataTable(["Pending", "Kind", "Status", "Needs", "Agent", "Justification", "Scope", ""], rows));
+    }
+
+    async function loadScopes() {
+      const data = await api("/admin/consent-scopes");
+      const rows = data.scopes.map((scope) =>
+        el("tr", {},
+          el("td", { class: "mono" }, scope),
+          el("td", {},
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/admin/consent-scopes/" + encodeURIComponent(scope), { method: "DELETE" }),
+                loadScopes) }, "Remove"))));
+      document.getElementById("scopes-table").replaceChildren(dataTable(["Scope", ""], rows));
+    }
+
+    async function loadTrust() {
+      const rows = (await api("/person/trusted-agent-servers")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, row.issuer),
+          el("td", {}, row.display_name ?? "—"),
+          el("td", { class: "mono", title: row.jwks_fingerprint }, shortId(row.jwks_fingerprint, 16)),
+          el("td", {}, row.added_at),
+          el("td", {},
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/person/trusted-agent-servers?issuer=" + encodeURIComponent(row.issuer),
+                { method: "DELETE" }), loadTrust) }, "Remove"))));
+      document.getElementById("trust-table").replaceChildren(
+        dataTable(["Issuer", "Name", "JWKS fingerprint", "Added", ""], rows));
+    }
+
+    document.getElementById("mission-state").addEventListener("change", () =>
+      loadMissions().catch((error) => banner(error.message, true)));
+
+    document.getElementById("scope-add").addEventListener("click", () => {
+      const input = document.getElementById("scope-input");
+      const scope = input.value.trim();
+      if (scope) {
+        act(() => api("/admin/consent-scopes", { method: "POST", body: { scope } })
+          .then(() => { input.value = ""; }), loadScopes);
+      }
+    });
+
+    document.getElementById("trust-add").addEventListener("click", () => {
+      const issuer = document.getElementById("trust-issuer").value.trim();
+      const displayName = document.getElementById("trust-name").value.trim();
+      if (issuer) {
+        act(() => api("/person/trusted-agent-servers", {
+          method: "POST",
+          body: displayName ? { issuer, display_name: displayName } : { issuer },
+        }), loadTrust);
+      }
+    });
+
+    initTokenBox();
+    initTabs({
+      missions: loadMissions,
+      pending: loadPending,
+      scopes: loadScopes,
+      trust: loadTrust,
+    });
+  </script>
+</body>
+</html>

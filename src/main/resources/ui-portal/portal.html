@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.portal.token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Console — Person Portal</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Console</span>
+    <span class="spacer"></span>
+    <span class="tokenbox">
+      <label for="token">Token</label>
+      <input id="token" type="password" autocomplete="off"
+             placeholder="admin / person token">
+    </span>
+    <a href="index.html">Home</a>
+    <a href="consent.html">Consent</a>
+  </header>
+
+  <main>
+    <nav class="tabs">
+      <button data-panel="pending">Pending</button>
+      <button data-panel="queue">My consent queue</button>
+      <button data-panel="missions">Missions</button>
+      <button data-panel="issued">Issued tokens</button>
+      <button data-panel="registrations">Registrations</button>
+      <button data-panel="bindings">Bindings</button>
+      <button data-panel="scopes">Consent scopes</button>
+      <button data-panel="trust">Trusted servers</button>
+    </nav>
+
+    <section class="card" data-panel-body="pending" hidden>
+      <h2>Open pending requests</h2>
+      <p class="hint">Every deferred agent request the Person Server is holding.
+      Requests waiting on you link to the consent page.</p>
+      <div id="pending-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="queue" hidden>
+      <h2>My consent queue</h2>
+      <p class="hint">Requests assigned to you that need a decision.</p>
+      <div id="queue-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="missions" hidden>
+      <h2>Missions</h2>
+      <p class="hint">Approved agent missions. Terminating a mission stops further
+      token issuance against it.</p>
+      <div class="toolbar">
+        <label for="mission-state">State</label>
+        <select id="mission-state" class="field">
+          <option value="">all</option>
+          <option value="active">active</option>
+          <option value="terminated">terminated</option>
+        </select>
+      </div>
+      <div id="missions-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="issued" hidden>
+      <h2>Issued auth tokens</h2>
+      <p class="hint">Audit log of every aa-auth+jwt this portal has issued, newest first.</p>
+      <div id="issued-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="registrations" hidden>
+      <h2>Pending agent registrations</h2>
+      <p class="hint">Agents that asked this Agent Server for an identity. Approve to
+      create a new binding, or link the device key to an existing agent.</p>
+      <div id="registrations-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="bindings" hidden>
+      <h2>Agent bindings</h2>
+      <p class="hint">Agent identities this server vouches for and their device keys.</p>
+      <div id="bindings-table">Loading…</div>
+      <details class="raw">
+        <summary>Pre-trust a stable key</summary>
+        <p class="hint">Create a binding directly from an agent's stable public JWK,
+        skipping the registration flow.</p>
+        <div class="toolbar">
+          <input id="pretrust-name" class="field" placeholder="agent name">
+        </div>
+        <textarea id="pretrust-jwk" class="field" rows="4"
+                  placeholder='stable public JWK, e.g. {"kty":"OKP","crv":"Ed25519","x":"..."}'></textarea>
+        <div class="toolbar">
+          <button class="btn" id="pretrust-submit">Create binding</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="card" data-panel-body="scopes" hidden>
+      <h2>Consent scopes</h2>
+      <p class="hint">Resource-token scopes that always require your explicit consent.</p>
+      <div class="toolbar">
+        <input id="scope-input" class="field" placeholder="scope, e.g. payments:write">
+        <button class="btn" id="scope-add">Add</button>
+      </div>
+      <div id="scopes-table">Loading…</div>
+    </section>
+
+    <section class="card" data-panel-body="trust" hidden>
+      <h2>Trusted agent servers</h2>
+      <p class="hint">Agent Server issuers whose agent tokens this Person Server accepts.</p>
+      <div class="toolbar">
+        <input id="trust-issuer" class="field" placeholder="issuer URL">
+        <input id="trust-name" class="field" placeholder="display name (optional)">
+        <button class="btn" id="trust-add">Add</button>
+      </div>
+      <div id="trust-table">Loading…</div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    function consentLink(url, code) {
+      if (!code) {
+        return "—";
+      }
+      const target = (url || "consent.html") + "?code=" + encodeURIComponent(code);
+      return el("a", { href: target }, "Open consent");
+    }
+
+    async function loadPending() {
+      const rows = (await api("/admin/pending")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, shortId(row.pending_id)),
+          el("td", {}, row.kind),
+          el("td", {}, pill(row.status)),
+          el("td", {}, row.requirement ?? "—"),
+          el("td", { class: "mono" }, shortId(row.agent_id, 20)),
+          el("td", {}, row.justification ?? "—"),
+          el("td", { class: "mono" }, row.resource_scope ?? "—"),
+          el("td", {}, consentLink(row.interaction_url, row.code))));
+      document.getElementById("pending-table").replaceChildren(
+        dataTable(["Pending", "Kind", "Status", "Needs", "Agent", "Justification", "Scope", ""], rows));
+    }
+
+    async function loadQueue() {
+      const rows = (await api("/user/consent")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, shortId(row.pending_id)),
+          el("td", {}, row.kind),
+          el("td", { class: "mono" }, shortId(row.agent_id, 20)),
+          el("td", {}, consentLink(row.interaction_url, row.code))));
+      document.getElementById("queue-table").replaceChildren(
+        dataTable(["Pending", "Kind", "Agent", ""], rows));
+    }
+
+    async function showMissionDetail(s256, cell) {
+      const detail = await api("/missions/" + encodeURIComponent(s256));
+      cell.replaceChildren(el("details", { class: "raw", open: "" },
+        el("summary", {}, "Detail + log"),
+        el("pre", {}, JSON.stringify(detail, null, 2))));
+    }
+
+    async function loadMissions() {
+      const state = document.getElementById("mission-state").value;
+      const missions = await api("/missions" + (state ? "?state=" + encodeURIComponent(state) : ""));
+      const rows = missions.map((mission) => {
+        const detailCell = el("td", { colspan: "6" });
+        const mainRow = el("tr", {},
+          el("td", { class: "mono", title: mission.s256 }, shortId(mission.s256)),
+          el("td", {}, mission.description),
+          el("td", {}, pill(mission.state)),
+          el("td", { class: "mono" }, shortId(mission.agent, 26)),
+          el("td", {}, mission.owner_id ?? "—"),
+          el("td", {},
+            el("button", { class: "btn ghost small", onclick: () =>
+              act(() => showMissionDetail(mission.s256, detailCell)) }, "Detail"),
+            " ",
+            mission.state === "active"
+              ? el("button", { class: "btn danger ghost small", onclick: () =>
+                  act(() => api("/missions/" + encodeURIComponent(mission.s256), {
+                    method: "PATCH",
+                    body: { state: "terminated" },
+                  }), loadMissions) }, "Terminate")
+              : null));
+        return [mainRow, el("tr", {}, detailCell)];
+      });
+      document.getElementById("missions-table").replaceChildren(
+        dataTable(["Mission", "Description", "State", "Agent", "Owner", ""], rows.flat()));
+    }
+
+    async function loadIssued() {
+      const rows = (await api("/admin/issued-tokens")).map((row) =>
+        el("tr", {},
+          el("td", {}, row.issued_at),
+          el("td", { class: "mono" }, shortId(row.agent_id, 20)),
+          el("td", { class: "mono" }, row.resource_iss ?? "—"),
+          el("td", { class: "mono" }, row.resource_scope ?? "—"),
+          el("td", {}, row.issue_method ?? "—"),
+          el("td", { class: "mono" }, shortId(row.token_jti, 16)),
+          el("td", {}, row.expires_at ?? "—")));
+      document.getElementById("issued-table").replaceChildren(
+        dataTable(["Issued", "Agent", "Resource", "Scope", "Method", "JTI", "Expires"], rows));
+    }
+
+    async function loadRegistrations() {
+      const rows = (await api("/person/registrations")).map((row) =>
+        el("tr", {},
+          el("td", {}, row.agent_name),
+          el("td", { class: "mono", title: row.stable_jkt }, shortId(row.stable_jkt, 16)),
+          el("td", {}, row.created_at),
+          el("td", {}, pill(row.status)),
+          el("td", {},
+            el("button", { class: "btn small", onclick: () =>
+              act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/approve", { method: "POST" })
+                .then((result) => banner("Approved as " + result.agent_id)), loadRegistrations) }, "Approve"),
+            " ",
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/deny", { method: "POST" }),
+                loadRegistrations) }, "Deny"),
+            " ",
+            el("button", { class: "btn ghost small", onclick: () => {
+              const agentId = prompt("Link this device key to which existing agent_id?");
+              if (agentId) {
+                act(() => api("/person/registrations/" + encodeURIComponent(row.id) + "/link", {
+                  method: "POST",
+                  body: { agent_id: agentId.trim() },
+                }), loadRegistrations);
+              }
+            } }, "Link"))));
+      document.getElementById("registrations-table").replaceChildren(
+        dataTable(["Agent name", "Stable key", "Requested", "Status", ""], rows));
+    }
+
+    async function loadBindings() {
+      const rows = (await api("/person/bindings")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, row.agent_id),
+          el("td", {}, row.agent_name),
+          el("td", {}, row.created_at),
+          el("td", {}, String(row.device_count)),
+          el("td", {}, row.revoked ? pill("revoked") : pill("active")),
+          el("td", {}, row.revoked ? "—" :
+            el("button", { class: "btn danger ghost small", onclick: () => {
+              if (confirm("Revoke binding for " + row.agent_id + "?")) {
+                act(() => api("/person/bindings/" + encodeURIComponent(row.agent_id) + "/revoke",
+                  { method: "POST" }), loadBindings);
+              }
+            } }, "Revoke"))));
+      document.getElementById("bindings-table").replaceChildren(
+        dataTable(["Agent id", "Name", "Created", "Devices", "State", ""], rows));
+    }
+
+    async function loadScopes() {
+      const data = await api("/admin/consent-scopes");
+      const rows = data.scopes.map((scope) =>
+        el("tr", {},
+          el("td", { class: "mono" }, scope),
+          el("td", {},
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/admin/consent-scopes/" + encodeURIComponent(scope), { method: "DELETE" }),
+                loadScopes) }, "Remove"))));
+      document.getElementById("scopes-table").replaceChildren(dataTable(["Scope", ""], rows));
+    }
+
+    async function loadTrust() {
+      const rows = (await api("/person/trusted-agent-servers")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, row.issuer),
+          el("td", {}, row.display_name ?? "—"),
+          el("td", { class: "mono", title: row.jwks_fingerprint }, shortId(row.jwks_fingerprint, 16)),
+          el("td", {}, row.added_at),
+          el("td", {},
+            el("button", { class: "btn danger ghost small", onclick: () =>
+              act(() => api("/person/trusted-agent-servers?issuer=" + encodeURIComponent(row.issuer),
+                { method: "DELETE" }), loadTrust) }, "Remove"))));
+      document.getElementById("trust-table").replaceChildren(
+        dataTable(["Issuer", "Name", "JWKS fingerprint", "Added", ""], rows));
+    }
+
+    document.getElementById("mission-state").addEventListener("change", () =>
+      loadMissions().catch((error) => banner(error.message, true)));
+
+    document.getElementById("scope-add").addEventListener("click", () => {
+      const input = document.getElementById("scope-input");
+      const scope = input.value.trim();
+      if (scope) {
+        act(() => api("/admin/consent-scopes", { method: "POST", body: { scope } })
+          .then(() => { input.value = ""; }), loadScopes);
+      }
+    });
+
+    document.getElementById("trust-add").addEventListener("click", () => {
+      const issuer = document.getElementById("trust-issuer").value.trim();
+      const displayName = document.getElementById("trust-name").value.trim();
+      if (issuer) {
+        act(() => api("/person/trusted-agent-servers", {
+          method: "POST",
+          body: displayName ? { issuer, display_name: displayName } : { issuer },
+        }), loadTrust);
+      }
+    });
+
+    document.getElementById("pretrust-submit").addEventListener("click", () => {
+      const name = document.getElementById("pretrust-name").value.trim();
+      const jwkText = document.getElementById("pretrust-jwk").value.trim();
+      if (!name || !jwkText) {
+        banner("Agent name and stable JWK are both required.", true);
+        return;
+      }
+      let stablePub;
+      try {
+        stablePub = JSON.parse(jwkText);
+      } catch {
+        banner("The stable key must be valid JWK JSON.", true);
+        return;
+      }
+      act(() => api("/person/bindings", {
+        method: "POST",
+        body: { stable_pub: stablePub, agent_name: name },
+      }).then((result) => banner("Bound as " + result.agent_id)), loadBindings);
+    });
+
+    initTokenBox();
+    initTabs({
+      pending: loadPending,
+      queue: loadQueue,
+      missions: loadMissions,
+      issued: loadIssued,
+      registrations: loadRegistrations,
+      bindings: loadBindings,
+      scopes: loadScopes,
+      trust: loadTrust,
+    });
+  </script>
+</body>
+</html>

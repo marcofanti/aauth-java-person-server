@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.as.person-token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agents — Agent Server</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Agents</span>
+    <span class="spacer"></span>
+    <span class="tokenbox">
+      <label for="token">Person token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="AAUTH_AS_PERSON_TOKEN">
+    </span>
+    <a href="index.html">Home</a>
+    <a href="registrations.html">Registrations</a>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Agent bindings</h2>
+      <p class="hint">Agent identities this server vouches for and their device keys.</p>
+      <div class="toolbar">
+        <button class="btn ghost small" id="refresh">Refresh</button>
+      </div>
+      <div id="bindings-table">Loading…</div>
+      <details class="raw">
+        <summary>Pre-trust a stable key</summary>
+        <p class="hint">Create a binding directly from an agent's stable public JWK,
+        skipping the registration flow.</p>
+        <div class="toolbar">
+          <input id="pretrust-name" class="field" placeholder="agent name">
+        </div>
+        <textarea id="pretrust-jwk" class="field" rows="4"
+                  placeholder='stable public JWK, e.g. {"kty":"OKP","crv":"Ed25519","x":"..."}'></textarea>
+        <div class="toolbar">
+          <button class="btn" id="pretrust-submit">Create binding</button>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    async function loadBindings() {
+      const rows = (await api("/person/bindings")).map((row) =>
+        el("tr", {},
+          el("td", { class: "mono" }, row.agent_id),
+          el("td", {}, row.agent_name),
+          el("td", {}, row.created_at),
+          el("td", {}, String(row.device_count)),
+          el("td", { class: "mono", title: (row.stable_key_thumbprints || []).join("\n") },
+            (row.stable_key_thumbprints || []).map((jkt) => shortId(jkt, 12)).join(", ")),
+          el("td", {}, row.revoked ? pill("revoked") : pill("active")),
+          el("td", {}, row.revoked ? "—" :
+            el("button", { class: "btn danger ghost small", onclick: () => {
+              if (confirm("Revoke binding for " + row.agent_id + "?")) {
+                act(() => api("/person/bindings/" + encodeURIComponent(row.agent_id) + "/revoke",
+                  { method: "POST" }), loadBindings);
+              }
+            } }, "Revoke"))));
+      document.getElementById("bindings-table").replaceChildren(
+        dataTable(["Agent id", "Name", "Created", "Devices", "Device keys", "State", ""], rows));
+    }
+
+    document.getElementById("pretrust-submit").addEventListener("click", () => {
+      const name = document.getElementById("pretrust-name").value.trim();
+      const jwkText = document.getElementById("pretrust-jwk").value.trim();
+      if (!name || !jwkText) {
+        banner("Agent name and stable JWK are both required.", true);
+        return;
+      }
+      let stablePub;
+      try {
+        stablePub = JSON.parse(jwkText);
+      } catch {
+        banner("The stable key must be valid JWK JSON.", true);
+        return;
+      }
+      act(() => api("/person/bindings", {
+        method: "POST",
+        body: { stable_pub: stablePub, agent_name: name },
+      }).then((result) => banner("Bound as " + result.agent_id)), loadBindings);
+    });
+
+    document.getElementById("refresh").addEventListener("click", () =>
+      loadBindings().catch((error) => banner(error.message, true)));
+    document.addEventListener("token-changed", () =>
+      loadBindings().catch((error) => banner(error.message, true)));
+
+    initTokenBox();
+    loadBindings().catch((error) => banner(error.message, true));
+  </script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-token-key="aauth-java.portal.token">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Person Portal</title>
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <img class="mark" src="mark.svg" alt="">
+    <span class="title">Person Portal</span>
+    <span class="subtitle">Person Server + Agent Server, one origin</span>
+    <span class="spacer"></span>
+    <a href="portal.html">Console</a>
+    <a href="consent.html">Consent</a>
+  </header>
+
+  <main>
+    <div class="home-links">
+      <a class="card" href="portal.html">
+        <h2>Console</h2>
+        <p class="hint">Missions, pending requests, issued tokens, agent registrations,
+        bindings, consent scopes, and the trust registry.</p>
+      </a>
+      <a class="card" href="consent.html">
+        <h2>Consent</h2>
+        <p class="hint">Review and decide an agent's pending request using an
+        interaction code.</p>
+      </a>
+    </div>
+
+    <div class="card">
+      <h2>Server metadata</h2>
+      <p class="hint">Published discovery documents for this origin.</p>
+      <div id="metadata">Loading…</div>
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+  <script>
+    "use strict";
+
+    async function loadMetadata() {
+      const target = document.getElementById("metadata");
+      try {
+        const [person, agent] = await Promise.all([
+          api("/.well-known/aauth-person.json", { noAuth: true }),
+          api("/.well-known/aauth-agent.json", { noAuth: true }),
+        ]);
+        target.replaceChildren(
+          el("dl", { class: "facts" },
+            el("dt", {}, "Issuer"), el("dd", { class: "mono" }, person.issuer),
+            el("dt", {}, "Client name"), el("dd", {}, agent.client_name),
+            el("dt", {}, "Token endpoint"), el("dd", { class: "mono" }, person.token_endpoint),
+            el("dt", {}, "Mission endpoint"), el("dd", { class: "mono" }, person.mission_endpoint),
+            el("dt", {}, "Registration endpoint"), el("dd", { class: "mono" }, agent.registration_endpoint),
+            el("dt", {}, "JWKS"), el("dd", { class: "mono" }, person.jwks_uri)),
+          el("details", { class: "raw" },
+            el("summary", {}, "Raw documents"),
+            el("pre", {}, JSON.stringify({ "aauth-person": person, "aauth-agent": agent }, null, 2))),
+        );
+      } catch (error) {
+        target.replaceChildren(el("span", { class: "hint" }, "Metadata unavailable: " + error.message));
+      }
+    }
+
+    loadMetadata();
+  </script>
+</body>
+</html>
