@@ -16,17 +16,18 @@ sync with the controllers, and never copy upstream UI markup into these director
 
 ## License
 
-MIT (`LICENSE`, Copyright © 2026 Marco Fanti), matching `../aauth-java-library` and
-`../aauth-full-java-demo`; the POM's `<licenses>` block declares the same. The upstream
-Python `../aauth-person-server` has **no license file** (unlike Christian Posta's
-MIT-licensed `aauth-python-library`). The verbatim-copied `ui-*` files were replaced
-on 2026-07-31 with an original UI authored from `docs/UI-CONTRACT.md` (derived from
-this repo's own controllers), which removes the clearest copying concern. Published
-2026-08-02 to github.com/marcofanti/aauth-java-person-server as a squashed single-root
-history so the copied UI never appears in public history; the pre-publish full history
-lives only on the local `pre-publish-history` branch — never push it. Remaining caveat:
-the server is a behavioral port of an unlicensed upstream; getting upstream permission
-or an upstream license is still the cleanest path for anything beyond reference use.
+Apache-2.0 (`LICENSE` + `NOTICE`, Copyright 2026 Marco Fanti; the POM's `<licenses>`
+block declares the same), switched from MIT on 2026-08-05 to match the license the
+upstream author agreed to adopt for the Python reference. Note `../aauth-java-library`
+and `../aauth-full-java-demo` are still MIT — the licenses are compatible in both
+directions. Upstream status: Christian Posta agreed by email (2026-08-04) to add
+Apache-2.0 to `christian-posta/aauth-person-server`; once his LICENSE file lands, the
+behavioral-port caveat below is fully retired. The verbatim-copied `ui-*` files were
+replaced on 2026-07-31 with an original UI authored from `docs/UI-CONTRACT.md` (derived
+from this repo's own controllers). Published 2026-08-02 to
+github.com/marcofanti/aauth-java-person-server as a squashed single-root history so the
+copied UI never appears in public history; the pre-publish full history lives only on
+the local `pre-publish-history` branch — never push it.
 
 ## Rules
 
