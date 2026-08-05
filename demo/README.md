@@ -47,12 +47,29 @@ creates them.
 `run-demo.sh` sets `AAUTH_PS_INSECURE_DEV=true` / `AAUTH_AS_INSECURE_DEV=true`
 so the scripted agent can use placeholder signatures and a stub identity
 header, and brokered tokens come from the fake federator (`aa-auth.fake.*`).
-The flows, routes, status codes, and UI are identical to secure mode; what
-changes with `./run-server.sh` (insecure=false) is real RFC 9421 signature
-verification, `scheme=jwt` agent auth on `POST /token`, real Ed25519-signed
-`aa-auth+jwt` issuance, and entries under the console's Issued tokens tab.
-The upstream Python repo's signed walkthrough scripts pass unchanged against
-that mode. Never expose insecure-dev beyond localhost.
+The flows, routes, status codes, and UI are identical to secure mode.
+Never expose insecure-dev beyond localhost.
+
+## Secure mode
+
+The same two-terminal shape, everything verified for real:
+
+```bash
+demo/run-secure-demo.sh            # terminal 1: secure server (both INSECURE_DEV=false)
+demo/secure-demo.sh                # terminal 2: four acts; you approve one registration
+AUTO=1 demo/secure-demo.sh         # unattended smoke test
+```
+
+Acts: prove stub identities get 401 → real hwk-signed registration, approval,
+and jkt-jwt refresh → a mode-3 agent (own resource metadata + JWKS, `scheme=jwt`
+`POST /token`) waits for **your** approval and receives a genuine Ed25519-signed
+`aa-auth+jwt` → the console's Issued tokens tab shows the record.
+
+The signing agents are the Python reference repo's client scripts run unchanged
+(live interop proof), so this mode needs a sibling clone of
+[aauth-person-server](https://github.com/christian-posta/aauth-person-server) at
+`../aauth-person-server` (or `PS_REPO=…`); its virtualenv is created on first
+run. `PORT=…` / `BASE=…` relocate both scripts if 8765 is taken.
 
 ## Slides
 
