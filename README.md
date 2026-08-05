@@ -1,9 +1,13 @@
 # AAuth Person Server (Java)
 
-Java port of [aauth-person-server](../aauth-person-server): a Person Server, an Agent
-Server, and a unified portal per the AAuth protocol
-([github.com/dickhardt/AAuth](https://github.com/dickhardt/AAuth)), built on
-[aauth-java-library](../aauth-java-library) for all RFC 9421 / Signature-Key / JWT work.
+[![ci](https://github.com/marcofanti/aauth-java-person-server/actions/workflows/ci.yml/badge.svg)](https://github.com/marcofanti/aauth-java-person-server/actions/workflows/ci.yml)
+
+Java port of Christian Posta's
+[aauth-person-server](https://github.com/christian-posta/aauth-person-server) reference
+implementation: a Person Server, an Agent Server, and a unified portal per the AAuth
+protocol ([github.com/dickhardt/AAuth](https://github.com/dickhardt/AAuth)), built on
+[aauth-java-library](https://github.com/marcofanti/aauth-java-library) for all
+RFC 9421 / Signature-Key / JWT work.
 Route surface, error bodies, env vars, and pending/consent semantics mirror the Python
 reference; its walkthrough scripts run unchanged against this server.
 
@@ -38,7 +42,8 @@ path `GET /pending/{id}`, AS console under `/ui/`).
 
 Environment variables are the Python server's, unchanged: `AAUTH_PS_*`, `AAUTH_AS_*`, and
 `AAUTH_DATABASE_URL` (SQLAlchemy-style `sqlite:///…` or `postgresql+psycopg://…`). See the
-[Python README](../aauth-person-server/README.md) for the full tables.
+[Python README](https://github.com/christian-posta/aauth-person-server#readme) for the
+full tables.
 
 Portal UI: `http://127.0.0.1:8765/ui/index.html` (sign in with the admin/person token).
 
@@ -57,7 +62,9 @@ Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides
 
 ## Interop with the Python repo (verified 2026-07-30)
 
-Run from `../aauth-person-server` with this server on 8765:
+Run from a sibling clone of
+[aauth-person-server](https://github.com/christian-posta/aauth-person-server) at
+`../aauth-person-server`, with this server on 8765:
 
 - `BASE_URL=http://127.0.0.1:8765 ./scripts/ps-demo.sh` — insecure-dev PS flow ✓
 - `.venv/bin/python scripts/agent-server-signed-walkthrough.py --base http://127.0.0.1:8765
