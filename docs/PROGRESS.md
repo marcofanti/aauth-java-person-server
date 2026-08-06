@@ -76,6 +76,18 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-08-06 — aauth-java-library 0.2.1 / AAuth draft-10**: bumped from 0.1.1 per the
+  library's `docs/DEMO.md` contract. New behavior: JWKS and `cnf.jwk` carry fully-specified
+  `alg: Ed25519` (the legacy `EdDSA` override is gone — 0.2.x verification rejects it);
+  the auth token copies the resource token's `account` claim (draft-10 §12.3); sub-agent
+  tokens (`parent_agent` present) are rejected on every jwt-signed PS request
+  (`invalid_agent_token`, draft-10 §11 single-level rule); unknown Signature-Key schemes
+  get 401 `unsupported_scheme` with `Signature-Error` + `Accept-Signature-Scheme: hwk, jwt`
+  + `Accept-Signature-Alg: Ed25519`; the AS omits the optional `ps` claim when the origin
+  is not https (draft-10 requires an HTTPS server identifier — local dev would otherwise
+  mint unverifiable tokens). Wire-parity note: the Python reference is still pre-draft-10;
+  token `alg` and the stricter posture are deliberate divergences, tolerated by the
+  library's transition verification (accepts `Ed25519` and legacy `EdDSA`).
 - **2026-08-05 — Licensing resolved**: this repo relicensed MIT → Apache-2.0
   (`LICENSE` + `NOTICE`), and upstream `christian-posta/aauth-person-server` added
   Apache-2.0 the same day (agreed by email). The behavioral-port caveat that had

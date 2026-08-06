@@ -239,7 +239,8 @@ class PortalHttpTest {
                 RS_KEY.getPrivate(),
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
-                null));
+                null,
+                "acct-1234"));
         byte[] tokenBytes = Json.write(Map.of("resource_token", resourceToken)).getBytes(StandardCharsets.UTF_8);
         MvcResult issued = mvc.perform(
                         signed("POST", "/token", tokenBytes, ephemeralKey, new SignatureScheme.Jwt(agentToken)))
@@ -254,6 +255,8 @@ class PortalHttpTest {
         assertThat(claims).containsEntry("iss", ORIGIN);
         assertThat(claims).containsEntry("aud", RESOURCE_ISS);
         assertThat(claims).containsEntry("agent", agentId);
+        // Draft-10 §12.3: the PS copies the resource token's account claim into the auth token.
+        assertThat(claims).containsEntry("account", "acct-1234");
 
         // 5. The issuance is visible on the portal's admin issued-tokens route.
         mvc.perform(get("/admin/issued-tokens").header("Authorization", "Bearer mytoken"))

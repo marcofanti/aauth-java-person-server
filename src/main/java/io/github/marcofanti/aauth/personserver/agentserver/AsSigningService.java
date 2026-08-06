@@ -161,16 +161,22 @@ public final class AsSigningService {
     public String createAgentToken(String agentId, Map<String, Object> ephemeralPub, Integer lifetimeSeconds) {
         int lifetime = lifetimeSeconds != null ? lifetimeSeconds : this.lifetimeSeconds;
         long exp = Instant.now().getEpochSecond() + lifetime;
-        return AgentTokens.create(AgentTokens.Spec.builder(issuer, agentId, ephemeralPub, keyPair.getPrivate(), kid)
-                .exp(exp)
-                .ps(psUrl)
-                .build());
+        AgentTokens.Spec.Builder builder = AgentTokens.Spec.builder(
+                        issuer, agentId, ephemeralPub, keyPair.getPrivate(), kid)
+                .exp(exp);
+        // Draft-10 §5.2.4 step 6: ps must be a valid HTTPS server identifier. Local-dev
+        // http origins would make every minted token unverifiable, so omit the optional
+        // claim instead of emitting a spec-invalid value.
+        if (psUrl != null && psUrl.startsWith("https://")) {
+            builder.ps(psUrl);
+        }
+        return AgentTokens.create(builder.build());
     }
 
     private static Map<String, Object> toJwk(KeyPair keyPair, String kid) {
+        // Draft-10: keep the library's fully-specified alg (Ed25519), not legacy EdDSA.
         Map<String, Object> jwk = new LinkedHashMap<>(Jwk.publicKeyToJwk(keyPair.getPublic(), kid));
         jwk.put("use", "sig");
-        jwk.put("alg", "EdDSA");
         return jwk;
     }
 }

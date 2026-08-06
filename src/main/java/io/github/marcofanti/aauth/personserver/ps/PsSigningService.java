@@ -138,9 +138,10 @@ public final class PsSigningService {
     }
 
     public Map<String, Object> getJwks() {
+        // Draft-10: keep the library's fully-specified alg (Ed25519); the legacy EdDSA
+        // override predates RFC 9864 and is rejected by 0.2.x verification.
         Map<String, Object> jwk = new LinkedHashMap<>(Jwk.publicKeyToJwk(keyPair.getPublic(), kid));
         jwk.put("use", "sig");
-        jwk.put("alg", "EdDSA");
         return Map.of("keys", List.of(jwk));
     }
 }

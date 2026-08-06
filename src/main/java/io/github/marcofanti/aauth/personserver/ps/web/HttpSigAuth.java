@@ -93,6 +93,14 @@ public final class HttpSigAuth {
             throw new IllegalArgumentException(message, e);
         }
 
+        // Draft-10 §11: parent_agent marks a sub-agent's token. The PS enforces the
+        // single-level rule — a sub-agent must not request authorization directly; its
+        // parent obtains auth tokens on its behalf.
+        if (claims.get("parent_agent") != null) {
+            throw new IllegalArgumentException(
+                    "sub-agent token (parent_agent present) cannot request authorization directly");
+        }
+
         if (!insecureDev) {
             boolean ok;
             try {

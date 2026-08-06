@@ -64,6 +64,9 @@ public final class AuthTokenIssuer {
             missionObj = copy;
         }
 
+        // Draft-10 §12.3: the PS copies the resource token's account claim into the auth token.
+        String account = resourceClaims.get("account") instanceof String value ? value : null;
+
         long exp = Instant.now().getEpochSecond() + lifetimeSeconds;
         String token = AuthTokens.create(AuthTokens.Spec.builder(iss, resourceIss, spec.agentId())
                 .cnfJwk(spec.agentCnfJwk())
@@ -74,6 +77,7 @@ public final class AuthTokenIssuer {
                 .exp(exp)
                 .mission(missionObj)
                 .dwk("aauth-person.json")
+                .account(account)
                 .build());
 
         if (store != null) {
