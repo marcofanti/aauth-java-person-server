@@ -1,0 +1,25 @@
+# Run with prek (https://github.com/j178/prek): prek install && prek run
+repos:
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]
+      - id: shfmt
+        name: shfmt (diff only)
+        entry: shfmt -d -i 2
+        language: system
+        types: [shell]
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+      - id: spotless
+        name: spotless check
+        entry: mvn -q spotless:check
+        language: system
+        pass_filenames: false
+        types: [java]
