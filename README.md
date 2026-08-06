@@ -4,7 +4,8 @@
 
 Java port of Christian Posta's
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) reference
-implementation: a Person Server, an Agent Server, and a unified portal per the AAuth
+implementation (Apache-2.0, as is this port): a Person Server, an Agent Server, and a
+unified portal per the AAuth
 protocol ([github.com/dickhardt/AAuth](https://github.com/dickhardt/AAuth)), built on
 [aauth-java-library](https://github.com/marcofanti/aauth-java-library) for all
 RFC 9421 / Signature-Key / JWT work.
