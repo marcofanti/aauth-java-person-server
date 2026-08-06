@@ -76,6 +76,11 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-08-05 — Licensing resolved**: this repo relicensed MIT → Apache-2.0
+  (`LICENSE` + `NOTICE`), and upstream `christian-posta/aauth-person-server` added
+  Apache-2.0 the same day (agreed by email). The behavioral-port caveat that had
+  gated publishing is retired; the repo is public at
+  github.com/marcofanti/aauth-java-person-server.
 - **2026-08-02 — aauth-java-library 0.1.1**: bumped from the `0.1.0-SNAPSHOT` local
   snapshot to the released `0.1.1` (`../aauth-java-library` tag `release: 0.1.1`).
   `mvn verify` green: 132 tests, no source changes needed.

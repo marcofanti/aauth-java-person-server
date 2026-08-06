@@ -20,9 +20,9 @@ Apache-2.0 (`LICENSE` + `NOTICE`, Copyright 2026 Marco Fanti; the POM's `<licens
 block declares the same), switched from MIT on 2026-08-05 to match the license the
 upstream author agreed to adopt for the Python reference. Note `../aauth-java-library`
 and `../aauth-full-java-demo` are still MIT — the licenses are compatible in both
-directions. Upstream status: Christian Posta agreed by email (2026-08-04) to add
-Apache-2.0 to `christian-posta/aauth-person-server`; once his LICENSE file lands, the
-behavioral-port caveat below is fully retired. The verbatim-copied `ui-*` files were
+directions. The upstream `christian-posta/aauth-person-server` is Apache-2.0 as of
+2026-08-05, so the long-standing behavioral-port caveat is retired: both sides of the
+port are now cleanly licensed. The verbatim-copied `ui-*` files were
 replaced on 2026-07-31 with an original UI authored from `docs/UI-CONTRACT.md` (derived
 from this repo's own controllers). Published 2026-08-02 to
 github.com/marcofanti/aauth-java-person-server as a squashed single-root history so the
