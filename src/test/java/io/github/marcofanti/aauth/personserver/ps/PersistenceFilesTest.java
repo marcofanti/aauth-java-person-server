@@ -29,13 +29,13 @@ class PersistenceFilesTest {
     }
 
     @Test
-    void signingJwksExposesEdDsaKey() {
+    void signingJwksExposesEd25519Key() {
         PsSigningService signing = new PsSigningService(null);
         Map<String, Object> jwks = signing.getJwks();
         assertThat(jwks.get("keys")).isInstanceOf(List.class);
         Map<?, ?> jwk = (Map<?, ?>) ((List<?>) jwks.get("keys")).getFirst();
         assertThat(jwk.get("kty")).isEqualTo("OKP");
-        assertThat(jwk.get("alg")).isEqualTo("EdDSA");
+        assertThat(jwk.get("alg")).isEqualTo("Ed25519");
         assertThat(jwk.get("use")).isEqualTo("sig");
         assertThat(jwk.get("kid")).isEqualTo(signing.kid());
     }

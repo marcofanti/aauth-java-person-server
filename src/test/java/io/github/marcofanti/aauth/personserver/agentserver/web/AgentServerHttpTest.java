@@ -181,7 +181,7 @@ class AgentServerHttpTest {
         Map<String, Object> stableJwk = publicJwk(stableKey);
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("typ", "jkt-s256+jwt");
-        header.put("alg", "EdDSA");
+        header.put("alg", "Ed25519");
         header.put("jwk", stableJwk);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("iss", "urn:jkt:sha-256:" + Jwk.thumbprint(stableJwk));

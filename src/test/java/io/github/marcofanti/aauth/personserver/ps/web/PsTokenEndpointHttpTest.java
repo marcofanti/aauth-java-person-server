@@ -47,15 +47,14 @@ class PsTokenEndpointHttpTest {
     private static final KeyPair AS_KEY = KeyPairs.generateEd25519();
     private static final KeyPair RS_KEY = KeyPairs.generateEd25519();
 
-    private static Map<String, Object> eddsaJwk(KeyPair keyPair, String kid) {
+    private static Map<String, Object> signingJwk(KeyPair keyPair, String kid) {
         Map<String, Object> jwk = new LinkedHashMap<>(Jwk.publicKeyToJwk(keyPair.getPublic(), kid));
         jwk.put("use", "sig");
-        jwk.put("alg", "EdDSA");
         return jwk;
     }
 
     private static Map<String, Object> jwksOf(KeyPair keyPair, String kid) {
-        return Map.of("keys", List.of(eddsaJwk(keyPair, kid)));
+        return Map.of("keys", List.of(signingJwk(keyPair, kid)));
     }
 
     @TestConfiguration
@@ -105,13 +104,13 @@ class PsTokenEndpointHttpTest {
 
     private static String agentJwt(String iss) {
         return AgentTokens.create(
-                AgentTokens.Spec.builder(iss, AGENT_ID, eddsaJwk(EPHEMERAL_KEY, "eph"), AS_KEY.getPrivate(), "as-kid")
+                AgentTokens.Spec.builder(iss, AGENT_ID, signingJwk(EPHEMERAL_KEY, "eph"), AS_KEY.getPrivate(), "as-kid")
                         .exp(Instant.now().getEpochSecond() + 3600)
                         .build());
     }
 
     private static String agentJkt() {
-        return Jwk.thumbprint(eddsaJwk(EPHEMERAL_KEY, "eph"));
+        return Jwk.thumbprint(signingJwk(EPHEMERAL_KEY, "eph"));
     }
 
     private static String resourceJwt(String scope, String aud) {
@@ -124,6 +123,7 @@ class PsTokenEndpointHttpTest {
                 RS_KEY.getPrivate(),
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
+                null,
                 null));
     }
 
@@ -161,7 +161,7 @@ class PsTokenEndpointHttpTest {
         assertThat(claims).containsEntry("dwk", "aauth-person.json");
         assertThat(claims.get("act")).isEqualTo(Map.of("sub", AGENT_ID));
 
-        // Full verification against the PS's own JWKS (kid + EdDSA signature + audience).
+        // Full verification against the PS's own JWKS (kid + Ed25519 signature + audience).
         Map<String, Object> verified = AuthTokens.verifyToken(
                 authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
         assertThat(verified).containsEntry("aud", RESOURCE_ISS);

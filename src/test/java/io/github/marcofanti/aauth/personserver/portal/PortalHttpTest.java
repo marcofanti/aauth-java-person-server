@@ -239,6 +239,7 @@ class PortalHttpTest {
                 RS_KEY.getPrivate(),
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
+                null,
                 null));
         byte[] tokenBytes = Json.write(Map.of("resource_token", resourceToken)).getBytes(StandardCharsets.UTF_8);
         MvcResult issued = mvc.perform(

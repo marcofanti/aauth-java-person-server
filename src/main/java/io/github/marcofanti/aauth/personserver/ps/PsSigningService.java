@@ -138,9 +138,9 @@ public final class PsSigningService {
     }
 
     public Map<String, Object> getJwks() {
+        // Jwk.publicKeyToJwk emits the draft-10 fully-specified alg (Ed25519, RFC 9864).
         Map<String, Object> jwk = new LinkedHashMap<>(Jwk.publicKeyToJwk(keyPair.getPublic(), kid));
         jwk.put("use", "sig");
-        jwk.put("alg", "EdDSA");
         return Map.of("keys", List.of(jwk));
     }
 }
