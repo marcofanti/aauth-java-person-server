@@ -164,10 +164,9 @@ public final class AsSigningService {
         AgentTokens.Spec.Builder builder = AgentTokens.Spec.builder(
                         issuer, agentId, ephemeralPub, keyPair.getPrivate(), kid)
                 .exp(exp);
-        // Draft-10 §5.2.4 step 6: ps must be a valid HTTPS server identifier. Local-dev
-        // http origins would make every minted token unverifiable, so omit the optional
-        // claim instead of emitting a spec-invalid value.
-        if (psUrl != null && psUrl.startsWith("https://")) {
+        // Always emitted: library >= 0.2.2 verifies ps as a well-formed http(s) server URL
+        // (HTTPS-in-production is deployment policy), so dev origins verify too.
+        if (psUrl != null && !psUrl.isEmpty()) {
             builder.ps(psUrl);
         }
         return AgentTokens.create(builder.build());
