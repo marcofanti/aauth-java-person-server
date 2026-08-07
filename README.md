@@ -63,10 +63,10 @@ Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides
 
 ## Interop with the Python repo (verified 2026-07-30; re-verified 2026-08-06 on draft-10)
 
-Draft-10 note: `ps-token-mode3.py` needs aauth-java-library ≥ 0.2.2 — 0.2.0/0.2.1
+Draft-10 note: `ps-token-mode3.py` needs aauth-java-library ≥ 0.2.3 — earlier 0.2.x
 reject the script's legacy `alg: EdDSA` resource JWKS (fixed by
-[aauth-java-library#15](https://github.com/marcofanti/aauth-java-library/pull/15)).
-The other scripts pass on 0.2.1 unchanged.
+[aauth-java-library#15](https://github.com/marcofanti/aauth-java-library/pull/15),
+first shipped in 0.2.3). This repo pins 0.2.3, so the full suite passes.
 
 Run from a sibling clone of
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) at

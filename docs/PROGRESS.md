@@ -76,6 +76,13 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-08-07 — aauth-java-library 0.2.2 → 0.2.3**: PR #8 bumped to 0.2.2 (pom-only),
+  which shipped the library's loose `ps`-claim validation but was tagged before the
+  EdDSA JWK tolerance landed — so the mode-3 Python interop stayed broken on it. 0.2.3
+  includes that fix (library #15); this repo pins 0.2.3 and the full Python interop
+  suite passes again. Also restored: the AS emits the `ps` claim unconditionally —
+  library ≥ 0.2.2 verifies it as a well-formed http(s) server URL (library #16), so
+  the http-origin omission guard from the 0.2.1 bump is no longer needed.
 - **2026-08-06 — aauth-java-library 0.2.1 / AAuth draft-10**: bumped from 0.1.1 per the
   library's `docs/DEMO.md` contract. New behavior: JWKS and `cnf.jwk` carry fully-specified
   `alg: Ed25519` (the legacy `EdDSA` override is gone — 0.2.x verification rejects it);
