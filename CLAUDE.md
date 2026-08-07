@@ -33,7 +33,7 @@ the local `pre-publish-history` branch — never push it.
 
 - JDK 26 (`--release 26`), Spring Boot WebMVC, same stack as `../aauth-full-java-demo`.
 - All RFC 9421 / Signature-Key / JWT work goes through `io.github.marcofanti:aauth`
-  (0.1.1, locally installed from `../aauth-java-library`) — never reimplement crypto.
+  (0.2.1 from Maven Central; source at `../aauth-java-library`) — never reimplement crypto.
 - Build: `mvn verify` (tests, JaCoCo 80% line gate, Spotless check).
 - Format: `mvn spotless:apply` (Palantir) before committing.
 - Zero warnings: `-Xlint:all,-serial,-processing -Werror`.

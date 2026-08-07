@@ -17,25 +17,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # io.github.marcofanti:aauth is not on Maven Central — build the pinned
-      # release from source and install it into the local repository.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: marcofanti/aauth-java-library
-          ref: v0.1.1
-          path: aauth-java-library
-          persist-credentials: false
-
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '26'
           cache: maven
 
-      - name: Install aauth-java-library
-        run: mvn -q -DskipTests install
-        working-directory: aauth-java-library
-
+      # io.github.marcofanti:aauth resolves from Maven Central (0.2.1+).
       - name: Verify (tests, coverage gate, Spotless)
         run: mvn verify
 
