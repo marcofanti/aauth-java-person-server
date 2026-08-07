@@ -2,6 +2,7 @@ package io.github.marcofanti.aauth.personserver.ps.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,7 +51,6 @@ class PsTokenEndpointHttpTest {
     private static Map<String, Object> eddsaJwk(KeyPair keyPair, String kid) {
         Map<String, Object> jwk = new LinkedHashMap<>(Jwk.publicKeyToJwk(keyPair.getPublic(), kid));
         jwk.put("use", "sig");
-        jwk.put("alg", "EdDSA");
         return jwk;
     }
 
@@ -124,6 +124,7 @@ class PsTokenEndpointHttpTest {
                 RS_KEY.getPrivate(),
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
+                null,
                 null));
     }
 
@@ -165,6 +166,44 @@ class PsTokenEndpointHttpTest {
         Map<String, Object> verified = AuthTokens.verifyToken(
                 authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
         assertThat(verified).containsEntry("aud", RESOURCE_ISS);
+    }
+
+    @Test
+    void subAgentTokenCannotRequestAuthorizationDirectly() throws Exception {
+        // Draft-10 §11: parent_agent marks a sub-agent; the PS enforces the single-level
+        // rule — a sub-agent must not request authorization directly.
+        String subAgentToken = AgentTokens.create(AgentTokens.Spec.builder(
+                        PS_ORIGIN,
+                        "aauth:planner.7f3c+search1@agent-server.example",
+                        eddsaJwk(EPHEMERAL_KEY, "eph"),
+                        AS_KEY.getPrivate(),
+                        "as-kid")
+                .exp(Instant.now().getEpochSecond() + 3600)
+                .parentAgent("aauth:planner.7f3c@agent-server.example")
+                .build());
+        MvcResult denied = mvc.perform(signedTokenPost(resourceJwt("demo.scope", PS_ORIGIN), subAgentToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_agent_token"))
+                .andReturn();
+        assertThat(denied.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("sub-agent");
+    }
+
+    @Test
+    void unsupportedSignatureSchemeAdvertisesAccepted() throws Exception {
+        // Draft-10 posture: unknown Signature-Key schemes are rejected with
+        // Signature-Error plus Accept-Signature-Scheme / Accept-Signature-Alg.
+        mvc.perform(post("/mission")
+                        .contentType("application/json")
+                        .content("{\"description\":\"x\"}")
+                        .header("Signature-Input", "sig=(\"@method\");created=1")
+                        .header("Signature", "sig=:AAAA:")
+                        .header("Signature-Key", "sig=x509;chain=\"abc\""))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unsupported_scheme"))
+                .andExpect(header().string("Signature-Error", "error=unsupported_scheme"))
+                .andExpect(header().string("Accept-Signature-Scheme", "hwk, jwt"))
+                .andExpect(header().string("Accept-Signature-Alg", "Ed25519"));
     }
 
     @Test

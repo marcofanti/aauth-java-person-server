@@ -61,7 +61,12 @@ AUTO=1 demo/demo.sh       # unattended smoke test
 
 Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides.html`).
 
-## Interop with the Python repo (verified 2026-07-30)
+## Interop with the Python repo (verified 2026-07-30; re-verified 2026-08-06 on draft-10)
+
+Draft-10 note: `ps-token-mode3.py` needs aauth-java-library ≥ 0.2.2 — 0.2.0/0.2.1
+reject the script's legacy `alg: EdDSA` resource JWKS (fixed by
+[aauth-java-library#15](https://github.com/marcofanti/aauth-java-library/pull/15)).
+The other scripts pass on 0.2.1 unchanged.
 
 Run from a sibling clone of
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) at

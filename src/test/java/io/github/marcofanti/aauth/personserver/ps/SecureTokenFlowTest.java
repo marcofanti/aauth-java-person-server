@@ -56,7 +56,7 @@ class SecureTokenFlowTest {
 
     private String resourceToken(String scope, String aud, Long exp) {
         return ResourceTokens.create(new ResourceTokens.Spec(
-                RESOURCE_ISS, aud, AGENT_ID, agentJkt(), scope, resourceKey.getPrivate(), "rk1", exp, null));
+                RESOURCE_ISS, aud, AGENT_ID, agentJkt(), scope, resourceKey.getPrivate(), "rk1", exp, null, null));
     }
 
     @SuppressWarnings("unchecked")

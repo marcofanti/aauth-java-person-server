@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.web;
 import static io.github.marcofanti.aauth.personserver.web.AAuthResponses.aauthJsonError;
 
 import io.github.marcofanti.aauth.ErrorCodes;
+import io.github.marcofanti.aauth.headers.AAuthHeaders;
 import io.github.marcofanti.aauth.personserver.ps.AgentTokenRejectException;
 import io.github.marcofanti.aauth.personserver.ps.ClarificationLimitException;
 import io.github.marcofanti.aauth.personserver.ps.ForbiddenOwnerException;
@@ -17,6 +18,7 @@ import io.github.marcofanti.aauth.personserver.ps.ResourceTokenRejectException;
 import io.github.marcofanti.aauth.personserver.ps.SlowDownException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -123,6 +125,21 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("detail", e.getMessage());
         return ResponseEntity.status(422).body(body);
+    }
+
+    @ExceptionHandler(UnsupportedSchemeError.class)
+    public ResponseEntity<Map<String, Object>> unsupportedScheme(UnsupportedSchemeError e) {
+        // Draft-10 posture: tell the agent what this server accepts so it can renegotiate.
+        ResponseEntity<Map<String, Object>> base = aauthJsonError(401, ErrorCodes.ERROR_UNSUPPORTED_SCHEME, e.detail());
+        return ResponseEntity.status(401)
+                .header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + ErrorCodes.ERROR_UNSUPPORTED_SCHEME)
+                .header(
+                        AAuthHeaders.HEADER_ACCEPT_SIGNATURE_SCHEME,
+                        AAuthHeaders.buildAcceptListHeader(List.of("hwk", "jwt")))
+                .header(
+                        AAuthHeaders.HEADER_ACCEPT_SIGNATURE_ALG,
+                        AAuthHeaders.buildAcceptListHeader(List.of("Ed25519")))
+                .body(base.getBody());
     }
 
     @ExceptionHandler(HttpError.class)

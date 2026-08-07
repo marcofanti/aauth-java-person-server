@@ -5,6 +5,7 @@ import io.github.marcofanti.aauth.personserver.ps.AgentTokenRejectException;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
+import io.github.marcofanti.aauth.personserver.web.UnsupportedSchemeError;
 import io.github.marcofanti.aauth.signing.HttpSignatureException;
 import io.github.marcofanti.aauth.signing.SignatureKeyHeader;
 import java.util.Locale;
@@ -63,13 +64,14 @@ public final class PsAuth {
             }
         }
 
+        // Draft-10 posture: reject unknown schemes before attempting verification, so the
+        // response can advertise what this server accepts (Accept-Signature-* headers).
+        if (!"hwk".equals(scheme)) {
+            throw new UnsupportedSchemeError(
+                    "Signature-Key must use scheme=hwk or scheme=jwt for this Person Server (got '" + scheme + "')");
+        }
         if (!HttpSigAuth.verifySignature(request)) {
             throw new HttpError(401, "HTTP signature verification failed");
-        }
-        if (!"hwk".equals(scheme)) {
-            throw new HttpError(
-                    401,
-                    "Signature-Key must use scheme=hwk or scheme=jwt for this Person Server (got '" + scheme + "')");
         }
         return hwkThumbprintOr401(parsed);
     }
