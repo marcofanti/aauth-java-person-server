@@ -22,11 +22,22 @@ public final class ProblemError extends RuntimeException {
 
     private final int status;
     private final String error;
+    private final Integer retryAfter;
 
     public ProblemError(int status, String error, String detail) {
+        this(status, error, detail, null);
+    }
+
+    /** A problem carrying {@code Retry-After} (seconds), which {@code rate_limited} requires. */
+    public ProblemError(int status, String error, String detail, Integer retryAfter) {
         super(detail);
         this.status = status;
         this.error = error;
+        this.retryAfter = retryAfter;
+    }
+
+    public Integer retryAfter() {
+        return retryAfter;
     }
 
     public int status() {

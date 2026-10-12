@@ -54,14 +54,15 @@ public final class MemoryTokenBroker implements TokenBroker {
             ConsentScopeStore consentScopes,
             String agentJwtStub,
             boolean autoApproveWithoutConsent,
-            MissionEvaluator evaluator) {
+            MissionEvaluator evaluator,
+            RevocationStore revocations) {
         this.store = store;
         this.federator = federator;
         this.mission = mission;
         this.psOrigin = IssuerUrls.normalizeIssuer(psOrigin);
         this.authIssuer = authIssuer;
         this.resourceJwks = resourceJwks;
-        this.draft11Checks = new Draft11Checks(psOrigin, resourceJwks, iss -> authIssuer.jwks());
+        this.draft11Checks = new Draft11Checks(psOrigin, resourceJwks, iss -> authIssuer.jwks(), revocations);
         this.consentScopes = consentScopes;
         this.agentJwtStub = agentJwtStub;
         this.autoApproveWithoutConsent = autoApproveWithoutConsent;
@@ -198,6 +199,7 @@ public final class MemoryTokenBroker implements TokenBroker {
         if (evaluatorReason != null) {
             record.evaluatorReason = evaluatorReason;
         }
+        store.saveRecord(record);
         store.updatePending(pendingId, PendingUpdate.ofRequirement(RequirementLevel.INTERACTION));
         PendingStoreValue value = store.getPending(pendingId, false);
         if (!(value instanceof TokenOutcome outcome)) {
@@ -243,6 +245,7 @@ public final class MemoryTokenBroker implements TokenBroker {
                 record.verifiedResourceClaims = emptyToNull(resourceClaims);
                 record.tokenAgentCnfJwk = request.agentCnfJwk();
                 record.evaluatorReason = decision.reason();
+                store.saveRecord(record);
                 store.updatePending(
                         pendingId,
                         new PendingUpdate(
@@ -292,6 +295,7 @@ public final class MemoryTokenBroker implements TokenBroker {
         }
         record.clarificationResponses.add(responseText);
         record.clarificationRound++;
+        store.saveRecord(record);
         if (record.tokenRequest != null && record.tokenRequest.mission() != null) {
             MissionRef ref = record.tokenRequest.mission();
             mission.appendMissionLog(
@@ -321,6 +325,7 @@ public final class MemoryTokenBroker implements TokenBroker {
         if (tokenRequest != null && tokenRequest.secureMode()) {
             record.verifiedResourceClaims =
                     verifyResourceToken(newResourceToken, tokenRequest.agentId(), tokenRequest.agentJkt());
+            store.saveRecord(record);
         }
         store.updatePending(
                 pendingId, new PendingUpdate(PendingStatus.PENDING, RequirementLevel.INTERACTION, null, null, null));
@@ -355,7 +360,9 @@ public final class MemoryTokenBroker implements TokenBroker {
             }
         }
         store.replaceTokenRequest(pendingId, newResourceToken, justification, presentedToken);
-        store.getRecord(pendingId).verifiedResourceClaims = updated;
+        PendingRecord record = store.getRecord(pendingId);
+        record.verifiedResourceClaims = updated;
+        store.saveRecord(record);
         store.updatePending(
                 pendingId, new PendingUpdate(PendingStatus.PENDING, RequirementLevel.INTERACTION, null, null, null));
         PendingStoreValue out = store.getPending(pendingId, false);

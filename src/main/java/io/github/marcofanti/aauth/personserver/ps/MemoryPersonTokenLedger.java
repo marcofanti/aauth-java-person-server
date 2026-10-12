@@ -1,7 +1,9 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -33,6 +35,17 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
     @Override
     public synchronized Issued findByJti(String jti) {
         return issued.get(jti);
+    }
+
+    @Override
+    public synchronized List<Issued> liveFor(String agentId, long nowEpochSeconds) {
+        List<Issued> out = new ArrayList<>();
+        for (Issued record : issued.values()) {
+            if (record.agentId().equals(agentId) && record.exp() > nowEpochSeconds) {
+                out.add(record);
+            }
+        }
+        return out;
     }
 
     @Override

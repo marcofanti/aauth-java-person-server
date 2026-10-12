@@ -339,6 +339,25 @@ public final class MemoryPendingStore implements PendingRequestStore {
     }
 
     @Override
+    public void saveRecord(PendingRecord record) {
+        // Records are held by reference; in-place changes are already visible.
+    }
+
+    @Override
+    public synchronized List<String> openPendingForResourceToken(String iss, String jti) {
+        List<String> out = new ArrayList<>();
+        for (PendingRecord record : backend.pending.values()) {
+            if (record.gone || record.terminal != null || record.failure != null) {
+                continue;
+            }
+            if (record.startedFor(iss, jti)) {
+                out.add(record.pendingId);
+            }
+        }
+        return out;
+    }
+
+    @Override
     public synchronized List<Map<String, Object>> listOpenPendingForAdmin() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (PendingRecord record : backend.pending.values()) {

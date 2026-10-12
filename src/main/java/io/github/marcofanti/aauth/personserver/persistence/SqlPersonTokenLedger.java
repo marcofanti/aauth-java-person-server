@@ -49,17 +49,28 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
 
     @Override
     public Issued findByJti(String jti) {
-        List<Issued> rows = jdbc.query(
-                "SELECT * FROM ps_person_token WHERE jti = ?",
-                (rs, rowNum) -> new Issued(
-                        rs.getString("jti"),
-                        rs.getString("agent_id"),
-                        rs.getString("person"),
-                        rs.getString("aud"),
-                        rs.getString("sub"),
-                        rs.getLong("exp")),
-                jti);
+        List<Issued> rows =
+                jdbc.query("SELECT * FROM ps_person_token WHERE jti = ?", SqlPersonTokenLedger::issued, jti);
         return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    @Override
+    public List<Issued> liveFor(String agentId, long nowEpochSeconds) {
+        return jdbc.query(
+                "SELECT * FROM ps_person_token WHERE agent_id = ? AND exp > ?",
+                SqlPersonTokenLedger::issued,
+                agentId,
+                nowEpochSeconds);
+    }
+
+    private static Issued issued(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return new Issued(
+                rs.getString("jti"),
+                rs.getString("agent_id"),
+                rs.getString("person"),
+                rs.getString("aud"),
+                rs.getString("sub"),
+                rs.getLong("exp"));
     }
 
     @Override

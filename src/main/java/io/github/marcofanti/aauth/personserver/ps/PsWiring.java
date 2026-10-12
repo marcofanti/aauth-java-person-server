@@ -187,6 +187,7 @@ public final class PsWiring {
         PsGovernance governance = new PsGovernance(backend, store);
         MemoryMissionLifecycle lifecycle =
                 new MemoryMissionLifecycle(backend, store, origin, options.autoApproveMission());
+        RevocationStore revocations = new MemoryRevocationStore();
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,
@@ -197,7 +198,8 @@ public final class PsWiring {
                 consentScopes,
                 options.agentJwtStub(),
                 options.autoApproveToken(),
-                buildEvaluator(options.missionEvaluator()));
+                buildEvaluator(options.missionEvaluator()),
+                revocations);
         PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
@@ -228,6 +230,7 @@ public final class PsWiring {
                 issuedStore,
                 consentScopes,
                 personTokenIssuer,
-                personTokenLedger);
+                personTokenLedger,
+                revocations);
     }
 }

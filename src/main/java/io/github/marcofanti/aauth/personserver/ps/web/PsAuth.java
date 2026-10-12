@@ -5,6 +5,7 @@ import io.github.marcofanti.aauth.personserver.ps.AgentTokenRejectException;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
+import io.github.marcofanti.aauth.personserver.web.SignatureError;
 import io.github.marcofanti.aauth.personserver.web.UnsupportedSchemeError;
 import io.github.marcofanti.aauth.signing.HttpSignatureException;
 import io.github.marcofanti.aauth.signing.Jwts;
@@ -63,7 +64,7 @@ public final class PsAuth {
         // aa-agent+jwt in Signature-Key (scheme=jwt), which requires JWKS resolution.
         if ("jwt".equals(scheme)) {
             try {
-                return HttpSigAuth.verifyAgentJwtRequest(request, ps.agentJwksResolver(), false)
+                return admit(HttpSigAuth.verifyAgentJwtRequest(request, ps.agentJwksResolver(), false))
                         .agentId();
             } catch (IllegalArgumentException e) {
                 throw new HttpError(401, e.getMessage());
@@ -134,6 +135,7 @@ public final class PsAuth {
             }
             throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_AGENT_TOKEN);
         }
+        admit(verified);
         Long agentTokenExp = Jwts.parse(verified.agentTokenJwt()).numericClaim("exp");
         return new TokenAgentContext(
                 verified.agentId(),
@@ -142,6 +144,24 @@ public final class PsAuth {
                 true,
                 verified.agentIss(),
                 agentTokenExp);
+    }
+
+    /**
+     * Refuse an agent token its provider revoked (§11.12.5), and otherwise remember its
+     * {@code (iss, jti)} and {@code sub} so a later revocation can cascade (§11.12.4 Records).
+     */
+    private HttpSigAuth.VerifiedAgent admit(HttpSigAuth.VerifiedAgent verified) {
+        Jwts.Decoded token = Jwts.parse(verified.agentTokenJwt());
+        String jti = token.claim("jti");
+        Long exp = token.numericClaim("exp");
+        if (jti == null || exp == null) {
+            return verified;
+        }
+        if (ps.revocations().isRevoked(verified.agentIss(), jti)) {
+            throw new SignatureError("revoked_jwt", "the agent provider has revoked this agent token");
+        }
+        ps.revocations().recordAgentToken(verified.agentIss(), jti, verified.agentId(), exp);
+        return verified;
     }
 
     private static SignatureKeyHeader.Parsed parseSignatureKey(String headerValue) {

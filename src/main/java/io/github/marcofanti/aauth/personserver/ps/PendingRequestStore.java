@@ -105,6 +105,12 @@ public interface PendingRequestStore {
     /** Pending record including internal fields (implementation helper). */
     PendingRecord getRecord(String pendingId);
 
+    /**
+     * Persist fields set directly on a record from {@link #getRecord}; a SQL store returns a
+     * fresh copy on each read, so in-place changes are lost without this.
+     */
+    void saveRecord(PendingRecord record);
+
     String getInteractionCode(String pendingId);
 
     /**
@@ -117,6 +123,9 @@ public interface PendingRequestStore {
 
     /** Pending rows awaiting user interaction, scoped to legal owner. */
     List<PendingRecord> listInteractionPendingForOwner(String ownerId);
+
+    /** Open pending ids started for the resource token {@code (iss, jti)} (§11.12.4). */
+    List<String> openPendingForResourceToken(String iss, String jti);
 
     /** All in-flight pending rows (not gone, not resolved, not failed). */
     List<Map<String, Object>> listOpenPendingForAdmin();

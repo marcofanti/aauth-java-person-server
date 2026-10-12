@@ -65,7 +65,7 @@ Each phase: tests first, `mvn verify` green, one PR into the `draft11` branch.
 - PS-95/96: interaction types `interaction|payment|question`; out-of-band completion.
 
 ### Phase 5 — Revocation (new endpoint)
-- PS-110..115: `POST /revocation` (`{jti, exp}`, issuer = verified `jwks_uri` signer, `(iss, jti)`
+- PS-110..115: `POST /revoke` (`{jti, exp}`, issuer = verified `jwks_uri` signer, `(iss, jti)`
   keys, no 404, `unsupported_iss`/`rate_limited`); agent-token cascade with 200/202 + signed
   polling; resource-token revocation → `revoked_resource_token` and pending `revoked`; outbound
   revocation signed as a server; downstream outcome handling; retention until `exp` + skew.
@@ -101,12 +101,20 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-30..36 auth token endpoint | done | `Draft11Checks`; three-party only (four-party aud rejected until Phase 6) |
 | PS-40 consent attribution | done | consent page: "This request" / "From the resource" / "Stated by the agent" |
 | Agent-token failures on -11 endpoints | done | 401 + `Signature-Error` (`invalid_signature`, `expired_jwt`, `invalid_jwt`) |
-| PS-32 revocation checks | pending | Phase 5 (needs revocation records) |
+| PS-32 revocation checks | done | `revoked_presented_token`; a revoked token is reported as revoked even when also expired (§11.12.5) |
 | PS-04 mission_endpoint | done | `/agent-missions` (+ `/agent-missions/{s256}`); draft-10 agents keep hardcoded `/mission` |
 | PS-80..90 missions | done | `Draft11Missions` (create/update), `Draft11MissionStatus` (active, expiry, reasons in the log) |
 | PS-95 interaction types | done | `completion` refused on `/interaction` for `mission_s256` requests |
 | PS-96 out-of-band completion | n/a | the PS completes interactions only via its consent page |
-| PS-03, 50..115 (rest) | pending | Phases 5–7 |
+| PS-03 `revocation_endpoint` | done | `POST /revoke` |
+| PS-102 signature failure codes | partial | `revoked_jwt`, `invalid_signature`, `unsupported_scheme` (+ `Accept-Signature-Scheme`) on `/revoke`; `clock_skew` pending |
+| PS-110 accept revocations | done | `jwks_uri` callers only; `dwk=aauth-agent.json` must be trusted (else 403 `unsupported_iss`); per-issuer cap 100/min → 429 + `Retry-After`; `exp` beyond 24h + skew → `invalid_request` |
+| PS-111 agent-token cascade | done (three-party) | by the agent's `sub`: live person tokens (ledger) and auth tokens (issued store); four-party AS revocation is Phase 6 |
+| PS-112 resource-token revocation | done | `revoked_resource_token`; open pendings started for it fail with polling error `revoked` |
+| PS-113 outbound revocation | done (three-party) | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` |
+| PS-114 downstream outcomes | done (three-party) | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry |
+| PS-115 records | done (three-party) | agent tokens `(iss, jti, sub, exp)`; person/auth tokens already recorded; upstream `(iss, jti)` with Phase 6 |
+| PS-50..64, PS-103, PS-104 | pending | Phases 6–7 |
 
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
@@ -133,3 +141,12 @@ metadata, so advertising the new path is safe. A mission is draft-11 when its bl
 identical to the reference. Known gap: draft-11 mission creation approves immediately (§8.1
 deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
 `AAUTH_PS_MISSION_LIFETIME_SECONDS` sets `expires_at` (unset = no expiry).
+
+Revocation (2026-10-12): the PS answers synchronously. Downstream calls run in parallel with
+5-second timeouts, so the cascade finishes inside the ~20 s hold §11.12.3 suggests, and the
+PS never answers 202. A downstream 202 counts as `revocation_unavailable` (the PS does not poll
+it); a repeated revocation retries. Records are not purged after `exp` (discarding is a MAY).
+Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker's in-place writes
+(`verifiedResourceClaims`, `tokenAgentCnfJwk`, `evaluatorReason`, clarification rounds) were lost
+in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
+persists them; it is a no-op in memory.

@@ -66,6 +66,15 @@ public final class PendingRecord {
         this.ttlSeconds = ttlSeconds;
     }
 
+    /** Whether this pending was started for the resource token {@code (iss, jti)}. */
+    public boolean startedFor(String iss, String jti) {
+        Map<String, Object> claims = verifiedResourceClaims;
+        return claims != null
+                && jti.equals(claims.get("jti"))
+                && MissionUtils.stripTrailingSlash(iss)
+                        .equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("iss"))));
+    }
+
     /** Agent id owning this pending row, from whichever request field is present. */
     public String agentId() {
         if (tokenRequest != null) {

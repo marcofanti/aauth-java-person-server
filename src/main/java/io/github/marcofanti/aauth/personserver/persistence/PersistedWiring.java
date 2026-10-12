@@ -18,6 +18,7 @@ import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsSigningService;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
 import io.github.marcofanti.aauth.personserver.ps.ResourceJwksResolver;
+import io.github.marcofanti.aauth.personserver.ps.RevocationStore;
 import java.util.Map;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -49,6 +50,7 @@ public final class PersistedWiring {
         var governance = new io.github.marcofanti.aauth.personserver.ps.PsGovernance(mission, store);
         MemoryMissionLifecycle lifecycle =
                 new MemoryMissionLifecycle(mission, store, origin, options.autoApproveMission());
+        RevocationStore revocations = new SqlRevocationStore(dataSource);
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,
@@ -59,7 +61,8 @@ public final class PersistedWiring {
                 consentScopes,
                 options.agentJwtStub(),
                 options.autoApproveToken(),
-                PsWiring.buildEvaluator(options.missionEvaluator()));
+                PsWiring.buildEvaluator(options.missionEvaluator()),
+                revocations);
         PersonTokenLedger personTokenLedger = new SqlPersonTokenLedger(dataSource);
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
@@ -89,7 +92,8 @@ public final class PersistedWiring {
                 issuedStore,
                 consentScopes,
                 personTokenIssuer,
-                personTokenLedger);
+                personTokenLedger,
+                revocations);
     }
 
     public static AsContainer buildPersistedAs(DataSource dataSource, AsContainer.MemoryOptions options) {

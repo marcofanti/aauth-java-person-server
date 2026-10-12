@@ -42,6 +42,7 @@ public class PsWellKnownController {
         out.put("audit_endpoint", meta.auditEndpoint());
         out.put("interaction_endpoint", meta.interactionEndpoint());
         out.put("mission_control_endpoint", meta.missionControlEndpoint());
+        out.put("revocation_endpoint", meta.revocationEndpoint());
         out.put("jwks_uri", meta.jwksUri());
         out.put("accept_signature_algs", List.of("Ed25519"));
         return out;

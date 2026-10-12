@@ -91,6 +91,9 @@ public class PsExceptionAdvice {
         if ("denied".equals(reason)) {
             return aauthJsonError(403, ErrorCodes.ERROR_DENIED, "request was denied");
         }
+        if ("revoked".equals(reason)) {
+            return aauthJsonError(403, "revoked", "a token this pending request depends on was revoked");
+        }
         return aauthJsonError(403, ErrorCodes.ERROR_DENIED, reason);
     }
 
@@ -145,10 +148,12 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", e.code());
         body.put("detail", e.getMessage());
-        return ResponseEntity.status(401)
-                .header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + e.code())
-                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                .body(body);
+        ResponseEntity.BodyBuilder response =
+                ResponseEntity.status(401).header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + e.code());
+        if (e.acceptScheme() != null) {
+            response.header("Accept-Signature-Scheme", e.acceptScheme());
+        }
+        return response.contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
     }
 
     @ExceptionHandler(BodyValidationException.class)
@@ -168,9 +173,11 @@ public class PsExceptionAdvice {
         if (e.detail() != null) {
             body.put("detail", e.detail());
         }
-        return ResponseEntity.status(e.status())
-                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                .body(body);
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(e.status());
+        if (e.retryAfter() != null) {
+            response.header("Retry-After", String.valueOf(e.retryAfter()));
+        }
+        return response.contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
     }
 
     @ExceptionHandler(UnsupportedSchemeError.class)

@@ -294,4 +294,43 @@ class PsAuthTokenDraft11HttpTest {
                         .pendingId())
                 .isEqualTo(pendingId);
     }
+
+    private static String jti(String token) {
+        return Jwts.parse(token).claim("jti");
+    }
+
+    @Test
+    void revokedPresentedTokenIsReportedAsRevoked() throws Exception {
+        String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        ps.revocations().revoke(PS_ORIGIN, jti(person), inOneHour());
+
+        assertProblem(postAuthToken(resourceToken(person), person), 400, ProblemError.REVOKED_PRESENTED_TOKEN);
+    }
+
+    @Test
+    void revokedResourceTokenIsReportedAsRevoked() throws Exception {
+        String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        String resource = resourceToken(person);
+        ps.revocations().revoke(RESOURCE_ISS, jti(resource), inOneHour());
+
+        assertProblem(postAuthToken(resource, person), 400, ProblemError.REVOKED_RESOURCE_TOKEN);
+    }
+
+    @Test
+    void revokedAgentTokenIsA401RevokedJwt() throws Exception {
+        String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        String agent = agentToken(inOneHour());
+        Map<String, Object> params = Map.of("resource_token", resourceToken(person), "presented_token", person);
+        assertThat(postAuthToken(params, agent).getResponse().getStatus()).isEqualTo(200);
+        assertThat(ps.revocations().agentSub(PS_ORIGIN, jti(agent))).isEqualTo(AGENT_ID);
+
+        ps.revocations().revoke(PS_ORIGIN, jti(agent), inOneHour());
+        MvcResult refused = postAuthToken(params, agent);
+        assertThat(refused.getResponse().getStatus()).isEqualTo(401);
+        assertThat(refused.getResponse().getHeader("Signature-Error")).isEqualTo("error=revoked_jwt");
+
+        // §11.12.4: the agent-person binding is unchanged; a fresh agent token works.
+        assertThat(postAuthToken(params, agentToken(inOneHour())).getResponse().getStatus())
+                .isEqualTo(200);
+    }
 }

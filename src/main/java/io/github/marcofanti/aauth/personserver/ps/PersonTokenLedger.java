@@ -1,5 +1,7 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import java.util.List;
+
 /**
  * Draft-11 person-token bookkeeping: which resources the person has approved (§7.1 first-use
  * consent) and the issuance record each person token requires (§7.1 Retention).
@@ -16,6 +18,9 @@ public interface PersonTokenLedger {
     void recordIssued(Issued issued);
 
     Issued findByJti(String jti);
+
+    /** Unexpired person tokens issued to {@code agentId}, for the revocation cascade (§11.12.4). */
+    List<Issued> liveFor(String agentId, long nowEpochSeconds);
 
     /**
      * Distinct resources other than {@code exclude} that {@code agentId} holds unexpired person

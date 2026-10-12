@@ -7,10 +7,21 @@ package io.github.marcofanti.aauth.personserver.web;
 public final class SignatureError extends RuntimeException {
 
     private final String code;
+    private final String acceptScheme;
 
     public SignatureError(String code, String detail) {
+        this(code, detail, null);
+    }
+
+    /** An {@code unsupported_scheme} failure naming the scheme the endpoint accepts (§11.3.4 step 4). */
+    public SignatureError(String code, String detail, String acceptScheme) {
         super(detail);
         this.code = code;
+        this.acceptScheme = acceptScheme;
+    }
+
+    public String acceptScheme() {
+        return acceptScheme;
     }
 
     public String code() {

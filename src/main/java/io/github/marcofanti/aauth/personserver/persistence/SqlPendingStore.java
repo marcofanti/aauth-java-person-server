@@ -377,6 +377,25 @@ public final class SqlPendingStore implements PendingRequestStore {
     }
 
     @Override
+    public void saveRecord(PendingRecord record) {
+        save(record);
+    }
+
+    @Override
+    public List<String> openPendingForResourceToken(String iss, String jti) {
+        List<String> rows = jdbc.query(
+                "SELECT record_json FROM ps_pending WHERE is_open = TRUE", (rs, rowNum) -> rs.getString("record_json"));
+        List<String> out = new ArrayList<>();
+        for (String json : rows) {
+            PendingRecord record = PendingSerde.recordFromDict(Json.readMap(json));
+            if (isOpen(record) && record.startedFor(iss, jti)) {
+                out.add(record.pendingId);
+            }
+        }
+        return out;
+    }
+
+    @Override
     public List<Map<String, Object>> listOpenPendingForAdmin() {
         List<String> rows = jdbc.query(
                 "SELECT record_json FROM ps_pending WHERE is_open = TRUE", (rs, rowNum) -> rs.getString("record_json"));

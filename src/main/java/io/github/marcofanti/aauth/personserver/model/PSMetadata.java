@@ -10,4 +10,5 @@ public record PSMetadata(
         String auditEndpoint,
         String interactionEndpoint,
         String missionControlEndpoint,
+        String revocationEndpoint,
         String jwksUri) {}

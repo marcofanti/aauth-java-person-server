@@ -105,6 +105,7 @@ public record PsSettings(
                 o + "/audit",
                 o + "/interaction",
                 o + "/missions",
+                o + "/revoke",
                 jwks);
     }
 }

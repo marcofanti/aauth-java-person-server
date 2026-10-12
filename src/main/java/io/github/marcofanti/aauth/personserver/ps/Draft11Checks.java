@@ -26,14 +26,17 @@ final class Draft11Checks {
     private final String psOrigin;
     private final Function<String, Map<String, Object>> resourceJwks;
     private final Function<String, Map<String, Object>> ownJwks;
+    private final RevocationStore revocations;
 
     Draft11Checks(
             String psOrigin,
             Function<String, Map<String, Object>> resourceJwks,
-            Function<String, Map<String, Object>> ownJwks) {
+            Function<String, Map<String, Object>> ownJwks,
+            RevocationStore revocations) {
         this.psOrigin = MissionUtils.stripTrailingSlash(psOrigin);
         this.resourceJwks = resourceJwks;
         this.ownJwks = ownJwks;
+        this.revocations = revocations;
     }
 
     /** Verify both tokens and their binding; returns the verified resource token claims. */
@@ -52,8 +55,10 @@ final class Draft11Checks {
         try {
             claims = ResourceTokens.verify(request.resourceToken(), resourceJwks, null, request.agentJkt());
         } catch (TokenException e) {
+            requireNotRevoked(request.resourceToken(), ProblemError.REVOKED_RESOURCE_TOKEN);
             throw tokenProblem(e, "invalid_resource_token", "expired_resource_token");
         }
+        requireNotRevoked(request.resourceToken(), ProblemError.REVOKED_RESOURCE_TOKEN);
         if (!psOrigin.equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("aud"))))) {
             throw new ProblemError(
                     400,
@@ -77,20 +82,40 @@ final class Draft11Checks {
         } catch (RuntimeException e) {
             throw new ProblemError(400, ProblemError.INVALID_PRESENTED_TOKEN, "presented_token is not a JWT");
         }
+        if (!PERSON_TYPE.equals(typ) && !AUTH_TYPE.equals(typ)) {
+            throw new ProblemError(
+                    400,
+                    ProblemError.INVALID_PRESENTED_TOKEN,
+                    "presented_token typ must be aa-person+jwt or aa-auth+jwt");
+        }
         String resourceIss = String.valueOf(resource.get("iss"));
+        Map<String, Object> claims;
         try {
-            if (PERSON_TYPE.equals(typ)) {
-                return PersonTokens.verify(token, issuerJwks(), resourceIss);
-            }
-            if (AUTH_TYPE.equals(typ)) {
-                return AuthTokens.verifyToken(
-                        token, issuerJwks(), new AuthTokens.VerifyOptions(AUTH_TYPE, null, resourceIss, null));
-            }
+            claims = PERSON_TYPE.equals(typ)
+                    ? PersonTokens.verify(token, issuerJwks(), resourceIss)
+                    : AuthTokens.verifyToken(
+                            token, issuerJwks(), new AuthTokens.VerifyOptions(AUTH_TYPE, null, resourceIss, null));
         } catch (TokenException e) {
+            requireNotRevoked(token, ProblemError.REVOKED_PRESENTED_TOKEN);
             throw tokenProblem(e, ProblemError.INVALID_PRESENTED_TOKEN, ProblemError.EXPIRED_PRESENTED_TOKEN);
         }
-        throw new ProblemError(
-                400, ProblemError.INVALID_PRESENTED_TOKEN, "presented_token typ must be aa-person+jwt or aa-auth+jwt");
+        requireNotRevoked(token, ProblemError.REVOKED_PRESENTED_TOKEN);
+        return claims;
+    }
+
+    /** §11.12.5: a revoked token is reported as revoked, not as malformed or expired. */
+    private void requireNotRevoked(String token, String code) {
+        Jwts.Decoded decoded;
+        try {
+            decoded = Jwts.parse(token);
+        } catch (RuntimeException e) {
+            return;
+        }
+        Object iss = decoded.payload().get("iss");
+        Object jti = decoded.payload().get("jti");
+        if (iss instanceof String issuer && jti instanceof String id && revocations.isRevoked(issuer, id)) {
+            throw new ProblemError(400, code, "the token's issuer has revoked it");
+        }
     }
 
     /** Presented tokens this PS verifies are ones it issued; others arrive with federation. */
