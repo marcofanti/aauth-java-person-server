@@ -118,6 +118,10 @@ public final class PsAuth {
                     "POST /token requires Signature-Key scheme=jwt when AAUTH_PS_INSECURE_DEV is false",
                     ErrorCodes.ERROR_INVALID_SIGNATURE);
         }
+        if (HttpSigAuth.createdAheadOfClock(request)) {
+            throw new AgentTokenRejectException(
+                    "signature created is ahead of the server clock", SignatureError.CLOCK_SKEW);
+        }
 
         HttpSigAuth.VerifiedAgent verified;
         try {

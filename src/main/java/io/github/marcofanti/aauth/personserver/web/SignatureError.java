@@ -6,6 +6,9 @@ package io.github.marcofanti.aauth.personserver.web;
  */
 public final class SignatureError extends RuntimeException {
 
+    /** Draft-11 §11.3.4 code not yet in the library's ErrorCodes. */
+    public static final String CLOCK_SKEW = "clock_skew";
+
     private final String code;
     private final String acceptScheme;
 

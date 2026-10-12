@@ -130,7 +130,9 @@ public class PsExceptionAdvice {
     public ResponseEntity<Map<String, Object>> agentTokenReject(
             AgentTokenRejectException e, HttpServletRequest request) {
         if (!isDraft11Path(request.getRequestURI())) {
-            return aauthJsonError(401, e.error(), e.getMessage());
+            // Draft-10 has no clock_skew; a signature outside the window is invalid_signature there.
+            String error = SignatureError.CLOCK_SKEW.equals(e.error()) ? ErrorCodes.ERROR_INVALID_SIGNATURE : e.error();
+            return aauthJsonError(401, error, e.getMessage());
         }
         // Draft-11 §11.9.3: no agent-token codes; a failing Signature-Key token is a 401 whose
         // Signature-Error header (§11.3.4) is the machine-readable carrier.
@@ -138,6 +140,7 @@ public class PsExceptionAdvice {
                 switch (e.error()) {
                     case ErrorCodes.ERROR_EXPIRED_AGENT_TOKEN -> "expired_jwt";
                     case ErrorCodes.ERROR_INVALID_SIGNATURE -> ErrorCodes.ERROR_INVALID_SIGNATURE;
+                    case SignatureError.CLOCK_SKEW -> SignatureError.CLOCK_SKEW;
                     default -> "invalid_jwt";
                 };
         return signatureError(new SignatureError(code, e.getMessage()));

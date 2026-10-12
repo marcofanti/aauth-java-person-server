@@ -22,6 +22,7 @@ final class Draft11Checks {
 
     private static final String PERSON_TYPE = "aa-person+jwt";
     private static final String AUTH_TYPE = "aa-auth+jwt";
+    private static final long MAX_LIFETIME_SECONDS = 3600;
 
     private final String psOrigin;
     private final Function<String, Map<String, Object>> resourceJwks;
@@ -100,7 +101,21 @@ final class Draft11Checks {
             throw tokenProblem(e, ProblemError.INVALID_PRESENTED_TOKEN, ProblemError.EXPIRED_PRESENTED_TOKEN);
         }
         requireNotRevoked(token, ProblemError.REVOKED_PRESENTED_TOKEN);
+        if (AUTH_TYPE.equals(typ)) {
+            requireBoundedLifetime(claims);
+        }
         return claims;
+    }
+
+    /** §11.5.2: an auth token carries {@code iat}, and {@code exp - iat} is at most one hour. */
+    private static void requireBoundedLifetime(Map<String, Object> claims) {
+        if (!(claims.get("iat") instanceof Number iat) || !(claims.get("exp") instanceof Number exp)) {
+            throw new ProblemError(400, ProblemError.INVALID_PRESENTED_TOKEN, "presented_token lacks iat or exp");
+        }
+        if (exp.longValue() - iat.longValue() > MAX_LIFETIME_SECONDS) {
+            throw new ProblemError(
+                    400, ProblemError.INVALID_PRESENTED_TOKEN, "presented_token lifetime exceeds one hour");
+        }
     }
 
     /** §11.12.5: a revoked token is reported as revoked, not as malformed or expired. */

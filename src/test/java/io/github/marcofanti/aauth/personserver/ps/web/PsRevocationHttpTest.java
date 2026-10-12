@@ -116,12 +116,19 @@ class PsRevocationHttpTest {
 
     private MvcResult send(String path, byte[] body, KeyPair key, SignatureScheme scheme, List<String> components)
             throws Exception {
+        return send(path, body, key, scheme, components, null);
+    }
+
+    private MvcResult send(
+            String path, byte[] body, KeyPair key, SignatureScheme scheme, List<String> components, Long created)
+            throws Exception {
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
                 .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(key)
                 .scheme(scheme)
                 .additionalComponents(components)
+                .created(created)
                 .build());
         MockHttpServletRequestBuilder request =
                 post(path).contentType(JSON_UTF8).content(body);
@@ -283,5 +290,18 @@ class PsRevocationHttpTest {
             assertProblem(revokeAsResource(bytes, RS_KEY), 400, "invalid_request");
         }
         assertProblem(revokeAsResource("[1]".getBytes(StandardCharsets.UTF_8), RS_KEY), 400, "invalid_request");
+    }
+
+    @Test
+    void signatureCreatedAheadOfTheClockIsClockSkew() throws Exception {
+        MvcResult result = send(
+                "/revoke",
+                revocation("rt-ahead"),
+                RS_KEY,
+                new SignatureScheme.JwksUri(RESOURCE.origin(), "aauth-resource.json", "rs-kid"),
+                BODY_COMPONENTS,
+                Instant.now().getEpochSecond() + 300);
+        assertSignatureError(result, "clock_skew");
+        assertThat(ps.revocations().isRevoked(RESOURCE.origin(), "rt-ahead")).isFalse();
     }
 }

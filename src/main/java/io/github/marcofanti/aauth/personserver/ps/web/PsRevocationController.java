@@ -86,6 +86,9 @@ public class PsRevocationController {
         } catch (HttpSignatureException e) {
             throw new SignatureError("invalid_key", e.getMessage());
         }
+        if (HttpSigAuth.createdAheadOfClock(signed)) {
+            throw new SignatureError(SignatureError.CLOCK_SKEW, "signature created is ahead of the server clock");
+        }
         if (!SCHEME.equals(key.scheme())) {
             throw new SignatureError("unsupported_scheme", "revocation callers sign as servers (jwks_uri)", SCHEME);
         }

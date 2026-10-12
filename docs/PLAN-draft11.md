@@ -107,14 +107,16 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-95 interaction types | done | `completion` refused on `/interaction` for `mission_s256` requests |
 | PS-96 out-of-band completion | n/a | the PS completes interactions only via its consent page |
 | PS-03 `revocation_endpoint` | done | `POST /revoke` |
-| PS-102 signature failure codes | partial | `revoked_jwt`, `invalid_signature`, `unsupported_scheme` (+ `Accept-Signature-Scheme`) on `/revoke`; `clock_skew` pending |
+| PS-102 signature failure codes | done | `revoked_jwt`; `clock_skew` for `created` ahead of the clock on draft-11 paths (draft-10 paths keep `invalid_signature`); `unsupported_scheme` + `Accept-Signature-Scheme` on `/revoke`; `/agent-missions/{s256}` now reports failures with `Signature-Error` |
 | PS-110 accept revocations | done | `jwks_uri` callers only; `dwk=aauth-agent.json` must be trusted (else 403 `unsupported_iss`); per-issuer cap 100/min → 429 + `Retry-After`; `exp` beyond 24h + skew → `invalid_request` |
 | PS-111 agent-token cascade | done (three-party) | by the agent's `sub`: live person tokens (ledger) and auth tokens (issued store); four-party AS revocation is Phase 6 |
 | PS-112 resource-token revocation | done | `revoked_resource_token`; open pendings started for it fail with polling error `revoked` |
 | PS-113 outbound revocation | done (three-party) | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` |
 | PS-114 downstream outcomes | done (three-party) | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry |
 | PS-115 records | done (three-party) | agent tokens `(iss, jti, sub, exp)`; person/auth tokens already recorded; upstream `(iss, jti)` with Phase 6 |
-| PS-50..64, PS-103, PS-104 | pending | Phases 6–7 |
+| PS-103 JWT checks | done | library: `exp` without tolerance, `typ` first, person-token `exp − iat` ≤ 1h; PS: presented auth tokens need `iat` and `exp − iat` ≤ 1h. The optional future-`iat` `clock_skew` is not applied |
+| PS-104 uppercase agent identifiers | done (PS) | agent ids compared exactly, no case folding; library `Identifiers` still rejects uppercase in `parent_agent` (library finding) |
+| PS-50..64 | pending | Phase 6 |
 
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
@@ -123,7 +125,9 @@ Dual-stack discriminator for the token endpoint: the path. Draft-11 clients disc
 Library findings to raise on its `draft11` branch: `PersonTokens.Spec` accepts `scope`,
 `account`, and `capabilities`, but §7.1.2 says a person token MUST NOT contain `scope` or
 `account` (the PS always passes `null`); `ErrorCodes` lacks the draft-11 token-endpoint codes
-(held in `ProblemError` until it has them).
+(held in `ProblemError` until it has them); the installed SNAPSHOT lacks `ERROR_CLOCK_SKEW` (held in
+`SignatureError`); `AuthTokens.verifyToken` does not require `iat` or bound `exp − iat` (PS-103,
+checked in `Draft11Checks`); `Identifiers.AAUTH_LOCAL` rejects uppercase locals (PS-104).
 
 Dual-stack safety rule (2026-10-12): a draft-11 resource token (`presented_jti` present) is
 refused on the legacy `/token` path, so a draft-11 agent cannot skip the presented-token

@@ -150,15 +150,21 @@ class PsAuthTokenDraft11HttpTest {
     }
 
     private MvcResult postAuthToken(Map<String, Object> params, String agentToken) throws Exception {
+        return signedPost("/auth-token", params, agentToken, null);
+    }
+
+    private MvcResult signedPost(String path, Map<String, Object> params, String agentToken, Long created)
+            throws Exception {
         byte[] body = Json.write(params).getBytes(StandardCharsets.UTF_8);
-        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/auth-token")
+        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
                 .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken))
                 .additionalComponents(BODY_COMPONENTS)
+                .created(created)
                 .build());
-        var request = post("/auth-token").contentType(JSON_UTF8).content(body);
+        var request = post(path).contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -332,5 +338,34 @@ class PsAuthTokenDraft11HttpTest {
         // §11.12.4: the agent-person binding is unchanged; a fresh agent token works.
         assertThat(postAuthToken(params, agentToken(inOneHour())).getResponse().getStatus())
                 .isEqualTo(200);
+    }
+
+    @Test
+    void signatureCreatedAheadOfTheClockIsClockSkewOnDraft11Only() throws Exception {
+        String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        Map<String, Object> params = Map.of("resource_token", resourceToken(person), "presented_token", person);
+        long ahead = Instant.now().getEpochSecond() + 300;
+
+        MvcResult draft11 = signedPost("/auth-token", params, agentToken(inOneHour()), ahead);
+        assertThat(draft11.getResponse().getStatus()).isEqualTo(401);
+        assertThat(draft11.getResponse().getHeader("Signature-Error")).isEqualTo("error=clock_skew");
+
+        MvcResult draft10 = signedPost("/token", params, agentToken(inOneHour()), ahead);
+        assertThat(draft10.getResponse().getStatus()).isEqualTo(401);
+        assertThat(json(draft10)).containsEntry("error", "invalid_signature");
+    }
+
+    @Test
+    void presentedAuthTokenLongerThanAnHourIsInvalid() throws Exception {
+        String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        String authToken =
+                (String) json(postAuthToken(resourceToken(person), person)).get("auth_token");
+        Jwts.Decoded decoded = Jwts.parse(authToken);
+        Map<String, Object> payload = new LinkedHashMap<>(decoded.payload());
+        payload.put("iat", ((Number) payload.get("exp")).longValue() - 7200);
+        String stretched = Jwts.signEdDsa(
+                decoded.header(), payload, ps.psSigning().keyPair().getPrivate());
+
+        assertProblem(postAuthToken(resourceToken(stretched), stretched), 400, ProblemError.INVALID_PRESENTED_TOKEN);
     }
 }

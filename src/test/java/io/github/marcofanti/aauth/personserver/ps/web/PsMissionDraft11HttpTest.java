@@ -235,6 +235,33 @@ class PsMissionDraft11HttpTest {
     }
 
     @Test
+    void uppercaseAgentIdentifiersAreAcceptedAndComparedExactly() throws Exception {
+        String upper = "aauth:Planner.7F3C@agent-server.example";
+        MvcResult created = signedPost(
+                "/agent-missions",
+                Map.of(
+                        "description",
+                        "Book a table",
+                        "tools",
+                        List.of(Map.of("name", "search", "description", "Search venues"))),
+                upper,
+                AGENT_KEY);
+        assertThat(created.getResponse().getStatus()).isEqualTo(200);
+        String s256 = (String) json(created).get("s256");
+        assertThat(ps.mission().getMission(s256).agentId()).isEqualTo(upper);
+
+        Map<String, Object> update = Map.of("action", "update", "description", "x");
+        assertThat(signedPost("/agent-missions/" + s256, update, upper.toLowerCase(java.util.Locale.ROOT), AGENT_KEY)
+                        .getResponse()
+                        .getStatus())
+                .isEqualTo(404);
+        assertThat(signedPost("/agent-missions/" + s256, update, upper, AGENT_KEY)
+                        .getResponse()
+                        .getStatus())
+                .isEqualTo(200);
+    }
+
+    @Test
     void anotherAgentsMissionIsIndistinguishableFromAMissingOne() throws Exception {
         String s256 = proposeSimple();
         String missing = "A".repeat(43);

@@ -67,7 +67,7 @@ public class PsMissionController {
     public ResponseEntity<Object> act(
             HttpServletRequest request, @PathVariable("s256") String s256, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
-        String agentId = auth.requireAgentId(signed);
+        String agentId = auth.requireTokenAgent(signed).agentId();
         BodyCoverage.require(signed);
         Mission mission = status.requireOwnActive(s256, agentId);
         BodyReader body = parse(raw);
