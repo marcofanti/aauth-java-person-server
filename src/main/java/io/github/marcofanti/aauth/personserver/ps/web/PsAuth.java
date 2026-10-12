@@ -23,7 +23,8 @@ public final class PsAuth {
             Map<String, Object> agentCnfJwk,
             boolean secureMode,
             String agentIss,
-            Long agentTokenExp) {}
+            Long agentTokenExp,
+            String agentToken) {}
 
     private final PsSettings settings;
     private final PsContainer ps;
@@ -87,7 +88,7 @@ public final class PsAuth {
         if (settings.insecureDev()) {
             String stubId = request.header("x-aauth-agent-id");
             if (stubId != null && !stubId.isEmpty()) {
-                return new TokenAgentContext(stubId, null, null, false, null, null);
+                return new TokenAgentContext(stubId, null, null, false, null, null, null);
             }
             if (request.hasSignatureHeaders()) {
                 if (!HttpSigAuth.verifySignature(request)) {
@@ -97,7 +98,7 @@ public final class PsAuth {
                 if (!"hwk".equals(parsed.scheme())) {
                     throw new HttpError(401, "Insecure dev token request: use scheme=hwk or X-AAuth-Agent-Id");
                 }
-                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false, null, null);
+                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false, null, null, null);
             }
             throw new HttpError(401, "Insecure dev: send X-AAuth-Agent-Id or an HWK-signed request for POST /token");
         }
@@ -147,7 +148,8 @@ public final class PsAuth {
                 verified.agentCnfJwk(),
                 true,
                 verified.agentIss(),
-                agentTokenExp);
+                agentTokenExp,
+                verified.agentTokenJwt());
     }
 
     /**

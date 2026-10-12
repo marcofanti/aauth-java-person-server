@@ -91,6 +91,9 @@ public class PsExceptionAdvice {
         if ("denied".equals(reason)) {
             return aauthJsonError(403, ErrorCodes.ERROR_DENIED, "request was denied");
         }
+        if (ProblemError.AS_UNREACHABLE.equals(reason)) {
+            return aauthJsonError(502, reason, "could not obtain a verifiable auth token from the access server");
+        }
         if ("revoked".equals(reason)) {
             return aauthJsonError(403, "revoked", "a token this pending request depends on was revoked");
         }

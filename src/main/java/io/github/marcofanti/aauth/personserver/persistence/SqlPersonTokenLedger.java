@@ -55,6 +55,20 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
     }
 
     @Override
+    public synchronized void recordPresentation(String jti, String asIssuer) {
+        String issuer = MissionUtils.stripTrailingSlash(asIssuer);
+        if (!presentedTo(jti).contains(issuer)) {
+            jdbc.update("INSERT INTO ps_person_token_presentation (jti, as_iss) VALUES (?, ?)", jti, issuer);
+        }
+    }
+
+    @Override
+    public List<String> presentedTo(String jti) {
+        return jdbc.queryForList(
+                "SELECT as_iss FROM ps_person_token_presentation WHERE jti = ? ORDER BY as_iss", String.class, jti);
+    }
+
+    @Override
     public List<Issued> liveFor(String agentId, long nowEpochSeconds) {
         return jdbc.query(
                 "SELECT * FROM ps_person_token WHERE agent_id = ? AND exp > ?",

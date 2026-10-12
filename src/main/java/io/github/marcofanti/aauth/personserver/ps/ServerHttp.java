@@ -1,0 +1,78 @@
+package io.github.marcofanti.aauth.personserver.ps;
+
+import io.github.marcofanti.aauth.personserver.Json;
+import io.github.marcofanti.aauth.signing.RequestSigner;
+import io.github.marcofanti.aauth.signing.SignRequest;
+import io.github.marcofanti.aauth.signing.SignatureScheme;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Requests the PS makes in its own right (§11.3.2): signed under the {@code jwks_uri} scheme with
+ * {@code id} = the PS issuer and {@code dwk=aauth-person.json}, covering {@code content-digest}
+ * and {@code content-type} whenever there is a body (§11.3.3).
+ */
+public final class ServerHttp {
+
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
+    private static final String JSON = "application/json";
+    private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
+
+    private final HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+    private final String psOrigin;
+    private final PsSigningService signing;
+
+    public ServerHttp(String psOrigin, PsSigningService signing) {
+        this.psOrigin = MissionUtils.stripTrailingSlash(psOrigin);
+        this.signing = signing;
+    }
+
+    /** Signed JSON POST. */
+    public HttpResponse<String> post(String url, Map<String, Object> body) throws IOException, InterruptedException {
+        byte[] bytes = Json.write(body).getBytes(StandardCharsets.UTF_8);
+        Map<String, String> headers = new LinkedHashMap<>(signedHeaders("POST", url, bytes));
+        headers.put("Content-Type", JSON);
+        return send(
+                HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofByteArray(bytes)), headers);
+    }
+
+    /** Signed GET with no body (pending-URL polling, §11.8). */
+    public HttpResponse<String> get(String url) throws IOException, InterruptedException {
+        return send(HttpRequest.newBuilder(URI.create(url)).GET(), signedHeaders("GET", url, null));
+    }
+
+    private Map<String, String> signedHeaders(String method, String url, byte[] body) {
+        URI uri = URI.create(url);
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Host", uri.getRawAuthority());
+        SignRequest.Builder request = SignRequest.builder(method, url)
+                .keyPair(signing.keyPair())
+                .scheme(new SignatureScheme.JwksUri(psOrigin, "aauth-person.json", signing.kid()));
+        if (body != null) {
+            headers.put("Content-Type", JSON);
+            request.body(body).additionalComponents(BODY_COMPONENTS);
+        }
+        return RequestSigner.sign(request.headers(headers).build());
+    }
+
+    private HttpResponse<String> send(HttpRequest.Builder request, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        headers.forEach((name, value) -> {
+            if (!"Host".equalsIgnoreCase(name)) {
+                request.header(name, value);
+            }
+        });
+        return client.send(request.timeout(TIMEOUT).build(), HttpResponse.BodyHandlers.ofString());
+    }
+}

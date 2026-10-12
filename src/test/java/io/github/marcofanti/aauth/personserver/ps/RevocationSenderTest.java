@@ -17,7 +17,7 @@ class RevocationSenderTest {
     private static final String PS_ORIGIN = "https://ps.example";
 
     private final PsSigningService signing = new PsSigningService(null);
-    private final RevocationSender sender = new RevocationSender(PS_ORIGIN, signing);
+    private final RevocationSender sender = new RevocationSender(new ServerHttp(PS_ORIGIN, signing));
     private final FakeRevocationResource resource = new FakeRevocationResource();
 
     @AfterEach
@@ -27,7 +27,8 @@ class RevocationSenderTest {
 
     @Test
     void postsJtiAndExpSignedAsThePersonServer() {
-        assertThat(sender.send(resource.origin(), "pt-1", 1_900_000_000L)).isEqualTo(Outcome.REVOKED);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1_900_000_000L))
+                .isEqualTo(Outcome.REVOKED);
 
         FakeRevocationResource.Received request = resource.received().getFirst();
         assertThat(request.json()).containsEntry("jti", "pt-1").containsEntry("exp", 1_900_000_000);
@@ -56,46 +57,53 @@ class RevocationSenderTest {
     @Test
     void aJsonObjectBodyStillCountsAsRecorded() {
         resource.answering(200, "{\"downstream\":[]}");
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOKED);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOKED);
     }
 
     @Test
     void anUnparseableBodyIsUnavailable() {
         resource.answering(200, "not json");
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
     }
 
     @Test
     void noRevocationEndpointIsUnsupported() {
         resource.withoutEndpoint();
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNSUPPORTED);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNSUPPORTED);
         assertThat(resource.received()).isEmpty();
     }
 
     @Test
     void unsupportedIssIsUnsupported() {
         resource.answering(403, "{\"error\":\"unsupported_iss\"}");
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNSUPPORTED);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNSUPPORTED);
     }
 
     @Test
     void serverErrorsAndOtherRefusalsAreUnavailable() {
         resource.answering(503, "");
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
         resource.answering(403, "{\"error\":\"other\"}");
-        assertThat(sender.send(resource.origin(), "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
     }
 
     @Test
     void anUnreachableRecipientIsUnavailable() {
         String gone = resource.origin();
         resource.close();
-        assertThat(sender.send(gone, "pt-1", 1L)).isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
+        assertThat(sender.send(gone, RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
     }
 
     @Test
     void signingInputCoversTheBody() {
-        sender.send(resource.origin(), "pt-1", 1L);
+        sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L);
         Map<String, String> headers = resource.received().getFirst().headers();
         assertThat(headers.get("content-digest")).startsWith("sha-256=");
     }

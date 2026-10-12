@@ -94,6 +94,9 @@ public final class MemoryTokenBroker implements TokenBroker {
         }
         String aud = IssuerUrls.normalizeAudClaim(resourceClaims.get("aud"));
         if (!IssuerUrls.issuerUrlsEquivalent(aud, psOrigin)) {
+            if (request.draft11() != null) {
+                return federator.federateDraft11(request, resourceClaims);
+            }
             return federator.requestAuthToken(request.resourceToken(), agentJwtStub, request.upstreamToken());
         }
         if (request.agentCnfJwk() == null) {

@@ -142,8 +142,8 @@ public class PsAgentController {
         } catch (BodyValidationException e) {
             throw new ProblemError(400, "invalid_request", e.getMessage());
         }
-        TokenRequest tokenRequest =
-                tokenRequest(agent, body, null, new TokenRequest.Draft11(presentedToken, agent.agentTokenExp()));
+        TokenRequest tokenRequest = tokenRequest(
+                agent, body, null, new TokenRequest.Draft11(presentedToken, agent.agentTokenExp(), agent.agentToken()));
         return AAuthResponses.tokenOutcomeResponse(ps.tokenBroker().requestToken(tokenRequest));
     }
 

@@ -25,9 +25,10 @@ public record TokenRequest(
 
     /**
      * Draft-11 request context (§7.2.1); {@code null} for a draft-10 request. {@code presentedToken}
-     * is the person or auth token the agent presented to the resource.
+     * is the person or auth token the agent presented to the resource; {@code agentToken} is the
+     * agent token from {@code Signature-Key}, forwarded when the PS federates to an AS (§9.1.1).
      */
-    public record Draft11(String presentedToken, Long agentTokenExp) {}
+    public record Draft11(String presentedToken, Long agentTokenExp, String agentToken) {}
 
     /** The same request bound to {@code missionRef} (draft-11: taken from the verified resource token). */
     public TokenRequest withMission(MissionRef missionRef) {
@@ -48,7 +49,8 @@ public record TokenRequest(
 
     /** The same request with an updated resource token (§7.5.2.2), keeping every other field. */
     public TokenRequest withUpdatedRequest(String newResourceToken, String newJustification, String presentedToken) {
-        Draft11 updated = draft11 == null ? null : new Draft11(presentedToken, draft11.agentTokenExp());
+        Draft11 updated =
+                draft11 == null ? null : new Draft11(presentedToken, draft11.agentTokenExp(), draft11.agentToken());
         return new TokenRequest(
                 agentId,
                 newResourceToken,

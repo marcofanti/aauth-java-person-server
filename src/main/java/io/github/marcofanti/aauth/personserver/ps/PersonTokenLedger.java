@@ -19,6 +19,12 @@ public interface PersonTokenLedger {
 
     Issued findByJti(String jti);
 
+    /** Record that the person token {@code jti} was presented to the AS {@code asIssuer} (§11.12.4). */
+    void recordPresentation(String jti, String asIssuer);
+
+    /** The ASes a person token was presented to, which a revocation of it must reach. */
+    List<String> presentedTo(String jti);
+
     /** Unexpired person tokens issued to {@code agentId}, for the revocation cascade (§11.12.4). */
     List<Issued> liveFor(String agentId, long nowEpochSeconds);
 

@@ -12,6 +12,7 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
 
     private final Set<String> approvals = new HashSet<>();
     private final Map<String, Issued> issued = new LinkedHashMap<>();
+    private final Map<String, Set<String>> presentations = new LinkedHashMap<>();
 
     private static String approvalKey(String person, String resource) {
         return person + "\u0000" + MissionUtils.stripTrailingSlash(resource);
@@ -35,6 +36,18 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
     @Override
     public synchronized Issued findByJti(String jti) {
         return issued.get(jti);
+    }
+
+    @Override
+    public synchronized void recordPresentation(String jti, String asIssuer) {
+        presentations
+                .computeIfAbsent(jti, key -> new java.util.LinkedHashSet<>())
+                .add(MissionUtils.stripTrailingSlash(asIssuer));
+    }
+
+    @Override
+    public synchronized List<String> presentedTo(String jti) {
+        return List.copyOf(presentations.getOrDefault(jti, Set.of()));
     }
 
     @Override

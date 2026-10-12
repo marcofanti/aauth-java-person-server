@@ -150,7 +150,8 @@ public final class PendingSerde {
         }
         return new TokenRequest.Draft11(
                 stringOrNull(data.get("presented_token")),
-                data.get("agent_token_exp") instanceof Number n ? n.longValue() : null);
+                data.get("agent_token_exp") instanceof Number n ? n.longValue() : null,
+                stringOrNull(data.get("agent_token")));
     }
 
     static PersonTokenRequest personTokenRequestFromDict(Map<String, Object> data) {
@@ -249,6 +250,7 @@ public final class PendingSerde {
             Map<String, Object> draft11 = new LinkedHashMap<>();
             draft11.put("presented_token", request.draft11().presentedToken());
             draft11.put("agent_token_exp", request.draft11().agentTokenExp());
+            draft11.put("agent_token", request.draft11().agentToken());
             out.put("draft11", draft11);
         }
         return out;

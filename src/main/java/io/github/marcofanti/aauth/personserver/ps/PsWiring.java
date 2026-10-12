@@ -174,8 +174,10 @@ public final class PsWiring {
         PsBackend backend = new PsBackend();
         String origin = MissionUtils.stripTrailingSlash(options.publicOrigin());
         MemoryPendingStore store = new MemoryPendingStore(backend, origin, options.pendingTtlSeconds());
-        FakeAsFederator federator = new FakeAsFederator();
         PsSigningService psSigning = new PsSigningService(options.signingKeyPath());
+        PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
+        AsFederator federator =
+                new HttpAsFederator(new FakeAsFederator(), new ServerHttp(origin, psSigning), personTokenLedger);
         MemoryAgentServerTrustRegistry trust = new MemoryAgentServerTrustRegistry(options.trustFile());
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
         Function<String, Map<String, Object>> resourceResolver =
@@ -200,7 +202,6 @@ public final class PsWiring {
                 options.autoApproveToken(),
                 buildEvaluator(options.missionEvaluator()),
                 revocations);
-        PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(

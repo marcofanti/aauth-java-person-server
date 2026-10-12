@@ -60,11 +60,9 @@ final class Draft11Checks {
             throw tokenProblem(e, "invalid_resource_token", "expired_resource_token");
         }
         requireNotRevoked(request.resourceToken(), ProblemError.REVOKED_RESOURCE_TOKEN);
-        if (!psOrigin.equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("aud"))))) {
-            throw new ProblemError(
-                    400,
-                    "invalid_resource_token",
-                    "resource token aud is not this PS (four-party federation is not supported yet)");
+        // aud is this PS (three-party) or the resource's AS (four-party, §9.1); ps is always this PS.
+        if (!(claims.get("aud") instanceof String aud) || aud.isBlank()) {
+            throw new ProblemError(400, "invalid_resource_token", "resource token has no aud");
         }
         if (!psOrigin.equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("ps"))))) {
             throw new ProblemError(400, "invalid_resource_token", "resource token ps does not name this PS");

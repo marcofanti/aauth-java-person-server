@@ -70,6 +70,8 @@ public final class DatabaseUrls {
                     + "PRIMARY KEY (person, resource))",
             "CREATE TABLE IF NOT EXISTS ps_person_token (jti TEXT PRIMARY KEY, agent_id TEXT NOT NULL, "
                     + "person TEXT NOT NULL, aud TEXT NOT NULL, sub TEXT NOT NULL, exp BIGINT NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS ps_person_token_presentation (jti TEXT NOT NULL, as_iss TEXT NOT NULL, "
+                    + "PRIMARY KEY (jti, as_iss))",
             "CREATE TABLE IF NOT EXISTS ps_revocation (iss TEXT NOT NULL, jti TEXT NOT NULL, exp BIGINT NOT NULL, "
                     + "PRIMARY KEY (iss, jti))",
             "CREATE TABLE IF NOT EXISTS ps_agent_token (iss TEXT NOT NULL, jti TEXT NOT NULL, sub TEXT NOT NULL, "

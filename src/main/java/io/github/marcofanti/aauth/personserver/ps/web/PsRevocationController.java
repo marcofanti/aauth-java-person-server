@@ -7,6 +7,7 @@ import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.RevocationSender;
 import io.github.marcofanti.aauth.personserver.ps.RevocationService;
 import io.github.marcofanti.aauth.personserver.ps.RevocationService.CallerKind;
+import io.github.marcofanti.aauth.personserver.ps.ServerHttp;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.personserver.web.RequestExtract;
@@ -47,7 +48,7 @@ public class PsRevocationController {
     public PsRevocationController(PsContainer ps, PsSettings settings) {
         this.ps = ps;
         this.psOrigin = IssuerUrls.normalizeIssuer(settings.origin());
-        RevocationSender sender = new RevocationSender(psOrigin, ps.psSigning());
+        RevocationSender sender = new RevocationSender(new ServerHttp(psOrigin, ps.psSigning()));
         this.service = new RevocationService(
                 psOrigin,
                 new RevocationService.Deps(
@@ -55,7 +56,7 @@ public class PsRevocationController {
                         ps.personTokenLedger(),
                         ps.issuedTokenStore(),
                         ps.pendingStore(),
-                        (recipient, token) -> sender.send(recipient, token.jti(), token.exp())));
+                        (recipient, metadata, token) -> sender.send(recipient, metadata, token.jti(), token.exp())));
     }
 
     @PostMapping("/revoke")

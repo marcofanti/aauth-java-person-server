@@ -19,6 +19,7 @@ public final class ProblemError extends RuntimeException {
     public static final String REVOKED_UPSTREAM_TOKEN = "revoked_upstream_token";
     public static final String USER_UNREACHABLE = "user_unreachable";
     public static final String RATE_LIMITED = "rate_limited";
+    public static final String AS_UNREACHABLE = "as_unreachable";
 
     private final int status;
     private final String error;

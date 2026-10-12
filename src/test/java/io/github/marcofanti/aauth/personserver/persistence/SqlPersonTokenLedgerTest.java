@@ -65,4 +65,29 @@ class SqlPersonTokenLedgerTest {
         assertThat(record.personTokenRequest).isEqualTo(request);
         assertThat(record.ownerId).isEqualTo("user");
     }
+
+    @Test
+    void presentationsToAccessServersPersistWithoutDuplicates() {
+        SqlPersonTokenLedger ledger = new SqlPersonTokenLedger(db.dataSource());
+        ledger.recordPresentation("pt-1", "https://as-b.example/");
+        ledger.recordPresentation("pt-1", "https://as-b.example");
+        ledger.recordPresentation("pt-1", "https://as-a.example");
+
+        assertThat(new SqlPersonTokenLedger(db.dataSource()).presentedTo("pt-1"))
+                .containsExactly("https://as-a.example", "https://as-b.example");
+        assertThat(ledger.presentedTo("pt-2")).isEmpty();
+    }
+
+    @Test
+    void liveTokensForAnAgentExcludeExpiredAndOtherAgents() {
+        SqlPersonTokenLedger ledger = new SqlPersonTokenLedger(db.dataSource());
+        ledger.recordIssued(new PersonTokenLedger.Issued("live", "agent", "user", "https://a.example", "s", NOW + 60));
+        ledger.recordIssued(new PersonTokenLedger.Issued("old", "agent", "user", "https://a.example", "s", NOW - 1));
+        ledger.recordIssued(
+                new PersonTokenLedger.Issued("other", "agent-2", "user", "https://a.example", "s", NOW + 60));
+
+        assertThat(ledger.liveFor("agent", NOW))
+                .extracting(PersonTokenLedger.Issued::jti)
+                .containsExactly("live");
+    }
 }

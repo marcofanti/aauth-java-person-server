@@ -98,7 +98,7 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-10..13 person token endpoint | done | first-use consent (`person_token` pending kind), `user_unreachable`, ledger, per-agent cap 100 |
 | PS-20 directed `sub` | done | HMAC-SHA256(person, resource); secret beside the PS signing key |
 | PS-70/71 sub-agent person tokens | done | `invalid_subagent_token`, `expired_subagent_token` |
-| PS-30..36 auth token endpoint | done | `Draft11Checks`; three-party only (four-party aud rejected until Phase 6) |
+| PS-30..36 auth token endpoint | done | `Draft11Checks`; `aud` is this PS (three-party) or the resource's AS (four-party); `ps` must be this PS |
 | PS-40 consent attribution | done | consent page: "This request" / "From the resource" / "Stated by the agent" |
 | Agent-token failures on -11 endpoints | done | 401 + `Signature-Error` (`invalid_signature`, `expired_jwt`, `invalid_jwt`) |
 | PS-32 revocation checks | done | `revoked_presented_token`; a revoked token is reported as revoked even when also expired (§11.12.5) |
@@ -109,14 +109,16 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-03 `revocation_endpoint` | done | `POST /revoke` |
 | PS-102 signature failure codes | done | `revoked_jwt`; `clock_skew` for `created` ahead of the clock on draft-11 paths (draft-10 paths keep `invalid_signature`); `unsupported_scheme` + `Accept-Signature-Scheme` on `/revoke`; `/agent-missions/{s256}` now reports failures with `Signature-Error` |
 | PS-110 accept revocations | done | `jwks_uri` callers only; `dwk=aauth-agent.json` must be trusted (else 403 `unsupported_iss`); per-issuer cap 100/min → 429 + `Retry-After`; `exp` beyond 24h + skew → `invalid_request` |
-| PS-111 agent-token cascade | done (three-party) | by the agent's `sub`: live person tokens (ledger) and auth tokens (issued store); four-party AS revocation is Phase 6 |
+| PS-111 agent-token cascade | done | by the agent's `sub`: live person tokens (at their resource and at each AS they were presented to) and PS-issued auth tokens |
 | PS-112 resource-token revocation | done | `revoked_resource_token`; open pendings started for it fail with polling error `revoked` |
-| PS-113 outbound revocation | done (three-party) | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` |
-| PS-114 downstream outcomes | done (three-party) | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry |
+| PS-113 outbound revocation | done | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` (resources) or `aauth-access.json` (ASes) |
+| PS-114 downstream outcomes | done | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry; an AS's `downstream` array is logged |
 | PS-115 records | done (three-party) | agent tokens `(iss, jti, sub, exp)`; person/auth tokens already recorded; upstream `(iss, jti)` with Phase 6 |
 | PS-103 JWT checks | done | library: `exp` without tolerance, `typ` first, person-token `exp − iat` ≤ 1h; PS: presented auth tokens need `iat` and `exp − iat` ≤ 1h. The optional future-`iat` `clock_skew` is not applied |
 | PS-104 uppercase agent identifiers | done (PS) | agent ids compared exactly, no case folding; library `Identifiers` still rejects uppercase in `parent_agent` (library finding) |
-| PS-50..64 | pending | Phase 6 |
+| PS-50..54 four-party federation | done | `HttpAsFederator`: discovers `aauth-access.json`, POSTs `resource_token`/`agent_token`/`presented_token` (+ `upstream_token`) signed as the PS, follows 202s (claims answered, others polled with a signed GET) within 20 s, verifies the §9.1.3 delivery checks, relays well-formed AS errors, else 502 `as_unreachable`; presentations recorded for revocation. Draft-10 requests keep the fake federator |
+| PS-55 claims without `sub` | done | the PS releases no claims (it holds none beyond the directed `sub`, which is never sent) |
+| PS-60..64 call chaining | pending | Phase 6 |
 
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
@@ -154,3 +156,8 @@ Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker
 (`verifiedResourceClaims`, `tokenAgentCnfJwk`, `evaluatorReason`, clarification rounds) were lost
 in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
 persists them; it is a no-op in memory.
+
+Four-party gaps (2026-10-12): an AS `requirement=interaction` or `clarification` is polled until
+the 20-second deadline rather than passed down to the agent, and a 402 is `as_unreachable` (no
+payment support). A relayed AS error on a deferred request reaches the agent as polling error
+`<error>` with 403 (502 for `as_unreachable`), since pending failures carry a code, not a status.

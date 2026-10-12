@@ -4,9 +4,11 @@ import io.github.marcofanti.aauth.personserver.agentserver.AsContainer;
 import io.github.marcofanti.aauth.personserver.agentserver.AsSigningService;
 import io.github.marcofanti.aauth.personserver.agentserver.ReplayCache;
 import io.github.marcofanti.aauth.personserver.ps.AgentServerJwksResolver;
+import io.github.marcofanti.aauth.personserver.ps.AsFederator;
 import io.github.marcofanti.aauth.personserver.ps.AuthTokenIssuer;
 import io.github.marcofanti.aauth.personserver.ps.ConsentScopeStore;
 import io.github.marcofanti.aauth.personserver.ps.FakeAsFederator;
+import io.github.marcofanti.aauth.personserver.ps.HttpAsFederator;
 import io.github.marcofanti.aauth.personserver.ps.MemoryMissionControl;
 import io.github.marcofanti.aauth.personserver.ps.MemoryMissionLifecycle;
 import io.github.marcofanti.aauth.personserver.ps.MemoryTokenBroker;
@@ -19,6 +21,7 @@ import io.github.marcofanti.aauth.personserver.ps.PsSigningService;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
 import io.github.marcofanti.aauth.personserver.ps.ResourceJwksResolver;
 import io.github.marcofanti.aauth.personserver.ps.RevocationStore;
+import io.github.marcofanti.aauth.personserver.ps.ServerHttp;
 import java.util.Map;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -36,8 +39,10 @@ public final class PersistedWiring {
         String origin = MissionUtils.stripTrailingSlash(options.publicOrigin());
         SqlMissionState mission = new SqlMissionState(dataSource);
         SqlPendingStore store = new SqlPendingStore(dataSource, mission, origin, options.pendingTtlSeconds());
-        FakeAsFederator federator = new FakeAsFederator();
         PsSigningService psSigning = new PsSigningService(options.signingKeyPath());
+        PersonTokenLedger personTokenLedger = new SqlPersonTokenLedger(dataSource);
+        AsFederator federator =
+                new HttpAsFederator(new FakeAsFederator(), new ServerHttp(origin, psSigning), personTokenLedger);
         SqlTrustRegistry trust = new SqlTrustRegistry(dataSource);
         trust.importFromFileIfEmpty(options.trustFile());
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
@@ -63,7 +68,6 @@ public final class PersistedWiring {
                 options.autoApproveToken(),
                 PsWiring.buildEvaluator(options.missionEvaluator()),
                 revocations);
-        PersonTokenLedger personTokenLedger = new SqlPersonTokenLedger(dataSource);
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(

@@ -16,6 +16,7 @@ import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -281,6 +282,13 @@ public final class MemoryUserConsent implements UserConsent {
                         tokenRequest.justification(),
                         "user_consent",
                         Draft11Checks.maxExp(tokenRequest, mission)));
+            } else if (tokenRequest.draft11() != null) {
+                try {
+                    auth = federator.federateDraft11(tokenRequest, claims);
+                } catch (ProblemError e) {
+                    store.failPending(pendingId, e.error());
+                    return new DecisionResult(record.callbackUrl);
+                }
             } else {
                 log.warn(
                         "consent: falling back to fake auth token (aud={} ps={} has_cnf={})",

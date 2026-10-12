@@ -260,12 +260,12 @@ class PsAuthTokenDraft11HttpTest {
     }
 
     @Test
-    void resourceTokenForAnotherServerIsRejected() throws Exception {
+    void resourceTokenForAnUnreachableAccessServerIsAsUnreachable() throws Exception {
         String person = personToken(AGENT_KEY, RESOURCE_ISS);
         assertProblem(
-                postAuthToken(resourceToken(person, "demo.scope", "https://as.example", null, null), person),
-                400,
-                "invalid_resource_token");
+                postAuthToken(resourceToken(person, "demo.scope", "http://127.0.0.1:1", null, null), person),
+                502,
+                ProblemError.AS_UNREACHABLE);
     }
 
     @Test

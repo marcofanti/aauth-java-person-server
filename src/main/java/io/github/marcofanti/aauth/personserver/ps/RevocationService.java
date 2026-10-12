@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +37,13 @@ public final class RevocationService {
             PersonTokenLedger personTokens,
             IssuedTokenStore authTokens,
             PendingRequestStore pending,
-            BiFunction<String, Token, RevocationSender.Outcome> sender) {}
+            Sender sender) {}
+
+    /** Revokes one token at one recipient, discovered from that recipient's metadata document. */
+    @FunctionalInterface
+    public interface Sender {
+        RevocationSender.Outcome send(String recipient, String metadata, Token token);
+    }
 
     /** A token the PS issued and now revokes downstream. */
     public record Token(String jti, long exp) {}
@@ -94,13 +99,17 @@ public final class RevocationService {
         }
     }
 
-    private record Target(String recipient, Token token) {}
+    private record Target(String recipient, String metadata, Token token) {}
 
     /** §11.12.4: revoke every live person and auth token issued to the agent, wherever it went. */
     private List<Downstream> cascade(String agentSub, long now) {
         List<Target> targets = new ArrayList<>();
         for (PersonTokenLedger.Issued issued : deps.personTokens().liveFor(agentSub, now)) {
-            targets.add(new Target(issued.aud(), new Token(issued.jti(), issued.exp())));
+            Token token = new Token(issued.jti(), issued.exp());
+            targets.add(new Target(issued.aud(), RevocationSender.RESOURCE_METADATA, token));
+            for (String accessServer : deps.personTokens().presentedTo(issued.jti())) {
+                targets.add(new Target(accessServer, RevocationSender.ACCESS_METADATA, token));
+            }
         }
         for (Map<String, Object> row : deps.authTokens().listIssued()) {
             Target target = liveAuthToken(row, agentSub, now);
@@ -115,7 +124,7 @@ public final class RevocationService {
             calls.add(CompletableFuture.supplyAsync(() -> new Downstream(
                     target.recipient(),
                     target.token().jti(),
-                    deps.sender().apply(target.recipient(), target.token()))));
+                    deps.sender().send(target.recipient(), target.metadata(), target.token()))));
         }
         List<Downstream> outcomes = new ArrayList<>();
         for (CompletableFuture<Downstream> call : calls) {
@@ -138,7 +147,7 @@ public final class RevocationService {
             return null;
         }
         long exp = expOf(row);
-        return exp > now ? new Target(resource, new Token(jti, exp)) : null;
+        return exp > now ? new Target(resource, RevocationSender.RESOURCE_METADATA, new Token(jti, exp)) : null;
     }
 
     private static long expOf(Map<String, Object> row) {

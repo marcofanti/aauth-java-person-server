@@ -34,10 +34,13 @@ class RevocationServiceTest {
 
     private RevocationService service(Outcome outcome) {
         return new RevocationService(
-                PS, new RevocationService.Deps(revocations, personTokens, authTokens, pending, (recipient, token) -> {
-                    sent.add(token.jti() + "@" + recipient + "#" + token.exp());
-                    return outcome;
-                }));
+                PS,
+                new RevocationService.Deps(
+                        revocations, personTokens, authTokens, pending, (recipient, metadata, token) -> {
+                            sent.add(token.jti() + "@" + recipient + "#" + token.exp()
+                                    + (metadata.equals(RevocationSender.ACCESS_METADATA) ? " (AS)" : ""));
+                            return outcome;
+                        }));
     }
 
     private static String unsignedJwt(Map<String, Object> claims) {
@@ -156,5 +159,19 @@ class RevocationServiceTest {
 
         assertThat(service.revoke("https://other-rs.example", CallerKind.RESOURCE, "rt", NOW + 60))
                 .isEmpty();
+    }
+
+    @Test
+    void personTokensAreAlsoRevokedAtEachAccessServerTheyWerePresentedTo() {
+        revocations.recordAgentToken(AP, "agent-jti", AGENT, NOW + 600);
+        personTokens.recordIssued(new PersonTokenLedger.Issued("pt-1", AGENT, "user", RS, "sub", NOW + 300));
+        personTokens.recordPresentation("pt-1", "https://as.example/");
+        personTokens.recordPresentation("pt-1", "https://as.example");
+
+        service.revoke(AP, CallerKind.AGENT_PROVIDER, "agent-jti", NOW + 600);
+
+        assertThat(sent)
+                .containsExactlyInAnyOrder(
+                        "pt-1@" + RS + "#" + (NOW + 300), "pt-1@https://as.example#" + (NOW + 300) + " (AS)");
     }
 }
