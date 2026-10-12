@@ -61,7 +61,7 @@ class PendingTtlTest {
         MemoryPendingStore store = storeWithTtl(600);
         String pendingId =
                 store.createPending(new io.github.marcofanti.aauth.personserver.model.MissionProposal("agent", "desc"));
-        assertThatThrownBy(() -> store.replaceTokenRequest(pendingId, "new", null))
+        assertThatThrownBy(() -> store.replaceTokenRequest(pendingId, "new", null, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

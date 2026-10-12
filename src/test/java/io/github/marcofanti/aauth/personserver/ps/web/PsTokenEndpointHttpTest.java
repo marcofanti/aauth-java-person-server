@@ -144,9 +144,9 @@ class PsTokenEndpointHttpTest {
     }
 
     @Test
-    void draft11ResourceTokenGetsDraft11AuthToken() throws Exception {
-        // Draft-11 §9.4.1: ps = this PS, sub = the resource token's directed sub,
-        // mission_s256 replaces the mission object, and agent/act are gone.
+    void draft11ResourceTokenOnTheLegacyPathIsRejected() throws Exception {
+        // Dual-stack must not let a draft-11 agent skip the presented-token cross-check (§6.7.2)
+        // by calling the draft-10 token_endpoint.
         String resourceToken = ResourceTokens.create(new ResourceTokens.Spec(
                 RESOURCE_ISS,
                 PS_ORIGIN,
@@ -158,26 +158,13 @@ class PsTokenEndpointHttpTest {
                 RS_KEY.getPrivate(),
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
-                "mission-hash-abc",
                 null,
                 null,
-                "acct-9"));
-        MvcResult result = mvc.perform(signedTokenPost(resourceToken, agentJwt(PS_ORIGIN)))
-                .andExpect(status().isOk())
-                .andReturn();
-        String authToken = (String) Json.readMap(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
-                .get("auth_token");
-
-        Map<String, Object> verified = AuthTokens.verifyToken(
-                authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
-        assertThat(verified)
-                .containsEntry("iss", PS_ORIGIN)
-                .containsEntry("ps", PS_ORIGIN)
-                .containsEntry("aud", RESOURCE_ISS)
-                .containsEntry("sub", "directed-sub-123")
-                .containsEntry("mission_s256", "mission-hash-abc")
-                .containsEntry("account", "acct-9")
-                .doesNotContainKeys("agent", "act", "mission");
+                null,
+                null));
+        mvc.perform(signedTokenPost(resourceToken, agentJwt(PS_ORIGIN)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_resource_token"));
     }
 
     @Test

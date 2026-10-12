@@ -278,7 +278,8 @@ public final class MemoryUserConsent implements UserConsent {
                         claims,
                         tokenRequest.mission(),
                         tokenRequest.justification(),
-                        "user_consent"));
+                        "user_consent",
+                        Draft11Checks.maxExp(tokenRequest)));
             } else {
                 log.warn(
                         "consent: falling back to fake auth token (aud={} ps={} has_cnf={})",

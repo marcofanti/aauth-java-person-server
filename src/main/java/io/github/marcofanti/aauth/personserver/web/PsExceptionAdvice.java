@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -114,9 +115,31 @@ public class PsExceptionAdvice {
         return aauthJsonError(401, e.error(), e.getMessage());
     }
 
+    static boolean isDraft11Path(String path) {
+        return path.startsWith("/auth-token") || path.startsWith("/person-token");
+    }
+
     @ExceptionHandler(AgentTokenRejectException.class)
-    public ResponseEntity<Map<String, Object>> agentTokenReject(AgentTokenRejectException e) {
-        return aauthJsonError(401, e.error(), e.getMessage());
+    public ResponseEntity<Map<String, Object>> agentTokenReject(
+            AgentTokenRejectException e, HttpServletRequest request) {
+        if (!isDraft11Path(request.getRequestURI())) {
+            return aauthJsonError(401, e.error(), e.getMessage());
+        }
+        // Draft-11 §11.9.3: no agent-token codes; a failing Signature-Key token is a 401 whose
+        // Signature-Error header (§11.3.4) is the machine-readable carrier.
+        String code =
+                switch (e.error()) {
+                    case ErrorCodes.ERROR_EXPIRED_AGENT_TOKEN -> "expired_jwt";
+                    case ErrorCodes.ERROR_INVALID_SIGNATURE -> ErrorCodes.ERROR_INVALID_SIGNATURE;
+                    default -> "invalid_jwt";
+                };
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", code);
+        body.put("detail", e.getMessage());
+        return ResponseEntity.status(401)
+                .header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + code)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
     }
 
     @ExceptionHandler(BodyValidationException.class)
@@ -137,7 +160,7 @@ public class PsExceptionAdvice {
             body.put("detail", e.detail());
         }
         return ResponseEntity.status(e.status())
-                .contentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(body);
     }
 

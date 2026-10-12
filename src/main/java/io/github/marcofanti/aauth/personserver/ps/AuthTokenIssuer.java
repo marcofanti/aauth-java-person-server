@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 /** Issue PS-signed {@code aa-auth+jwt} (SPEC §Auth Token, three-party). */
 public final class AuthTokenIssuer {
 
+    private static final long MAX_DRAFT11_LIFETIME_SECONDS = 3600;
+
     private static final Logger log = LoggerFactory.getLogger(AuthTokenIssuer.class);
 
     private final String iss;
@@ -41,11 +43,17 @@ public final class AuthTokenIssuer {
             Map<String, Object> resourceClaims,
             MissionRef mission,
             String justification,
-            String issueMethod) {
+            String issueMethod,
+            Long maxExp) {
 
         public IssueSpec {
             issueMethod = issueMethod == null ? "autonomous" : issueMethod;
         }
+    }
+
+    /** This PS's signing JWKS, for verifying tokens it issued. */
+    public Map<String, Object> jwks() {
+        return signing.getJwks();
     }
 
     public AuthTokenResponse issue(IssueSpec spec) {
@@ -68,8 +76,17 @@ public final class AuthTokenIssuer {
         // The PS copies the resource token's account claim into the auth token (§12.3).
         String account = stringClaim(resourceClaims, "account");
 
-        long exp = Instant.now().getEpochSecond() + lifetimeSeconds;
-        String token = ResourceTokenVerifier.isDraft11(resourceClaims)
+        boolean draft11 = ResourceTokenVerifier.isDraft11(resourceClaims);
+        long now = Instant.now().getEpochSecond();
+        long exp = now + lifetimeSeconds;
+        if (draft11) {
+            // §9.4.1: at most one hour, and never past the agent token or the presented token.
+            exp = Math.min(exp, now + MAX_DRAFT11_LIFETIME_SECONDS);
+            if (spec.maxExp() != null) {
+                exp = Math.min(exp, spec.maxExp());
+            }
+        }
+        String token = draft11
                 ? issueDraft11(spec, resourceClaims, resourceIss, scope, account, exp)
                 : Draft10Tokens.createAuthToken(
                         new Draft10Tokens.AuthTokenSpec(
@@ -101,7 +118,7 @@ public final class AuthTokenIssuer {
             }
         }
 
-        return new AuthTokenResponse(token, lifetimeSeconds);
+        return new AuthTokenResponse(token, (int) (exp - now));
     }
 
     /**

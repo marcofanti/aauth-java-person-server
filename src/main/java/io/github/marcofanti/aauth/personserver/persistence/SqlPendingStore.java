@@ -347,24 +347,13 @@ public final class SqlPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public void replaceTokenRequest(String pendingId, String resourceToken, String justification) {
+    public void replaceTokenRequest(
+            String pendingId, String resourceToken, String justification, String presentedToken) {
         PendingRecord record = require(pendingId);
         if (record.tokenRequest == null) {
             throw new IllegalStateException("not a token pending");
         }
-        TokenRequest previous = record.tokenRequest;
-        record.tokenRequest = new TokenRequest(
-                previous.agentId(),
-                resourceToken,
-                justification,
-                previous.upstreamToken(),
-                previous.loginHint(),
-                previous.tenant(),
-                previous.domainHint(),
-                previous.mission(),
-                previous.agentCnfJwk(),
-                previous.agentJkt(),
-                previous.secureMode());
+        record.tokenRequest = record.tokenRequest.withUpdatedRequest(resourceToken, justification, presentedToken);
         save(record);
     }
 

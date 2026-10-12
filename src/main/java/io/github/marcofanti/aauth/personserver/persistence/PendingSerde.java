@@ -144,6 +144,15 @@ public final class PendingSerde {
         return out;
     }
 
+    static TokenRequest.Draft11 draft11FromDict(Map<String, Object> data) {
+        if (data == null) {
+            return null;
+        }
+        return new TokenRequest.Draft11(
+                stringOrNull(data.get("presented_token")),
+                data.get("agent_token_exp") instanceof Number n ? n.longValue() : null);
+    }
+
     static PersonTokenRequest personTokenRequestFromDict(Map<String, Object> data) {
         if (data == null) {
             return null;
@@ -236,6 +245,12 @@ public final class PendingSerde {
         out.put("agent_cnf_jwk", request.agentCnfJwk());
         out.put("agent_jkt", request.agentJkt());
         out.put("secure_mode", request.secureMode());
+        if (request.draft11() != null) {
+            Map<String, Object> draft11 = new LinkedHashMap<>();
+            draft11.put("presented_token", request.draft11().presentedToken());
+            draft11.put("agent_token_exp", request.draft11().agentTokenExp());
+            out.put("draft11", draft11);
+        }
         return out;
     }
 
@@ -255,7 +270,8 @@ public final class PendingSerde {
                 mission,
                 mapOrNull(data.get("agent_cnf_jwk")),
                 stringOrNull(data.get("agent_jkt")),
-                !Boolean.FALSE.equals(data.get("secure_mode")));
+                !Boolean.FALSE.equals(data.get("secure_mode")),
+                draft11FromDict(mapOrNull(data.get("draft11"))));
     }
 
     static Map<String, Object> missionProposalToDict(MissionProposal proposal) {

@@ -214,24 +214,13 @@ public final class MemoryPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public synchronized void replaceTokenRequest(String pendingId, String resourceToken, String justification) {
+    public synchronized void replaceTokenRequest(
+            String pendingId, String resourceToken, String justification, String presentedToken) {
         PendingRecord record = require(pendingId);
         if (record.tokenRequest == null) {
             throw new IllegalStateException("not a token pending");
         }
-        TokenRequest previous = record.tokenRequest;
-        record.tokenRequest = new TokenRequest(
-                previous.agentId(),
-                resourceToken,
-                justification,
-                previous.upstreamToken(),
-                previous.loginHint(),
-                previous.tenant(),
-                previous.domainHint(),
-                previous.mission(),
-                previous.agentCnfJwk(),
-                previous.agentJkt(),
-                previous.secureMode());
+        record.tokenRequest = record.tokenRequest.withUpdatedRequest(resourceToken, justification, presentedToken);
     }
 
     private DeferredResponse toDeferred(PendingRecord record) {

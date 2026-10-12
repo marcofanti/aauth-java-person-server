@@ -10,7 +10,6 @@ import io.github.marcofanti.aauth.personserver.model.MissionRef;
 import io.github.marcofanti.aauth.personserver.model.PendingPollOutcome;
 import io.github.marcofanti.aauth.personserver.model.PermissionOutcome;
 import io.github.marcofanti.aauth.personserver.model.PermissionRequest;
-import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.ToolSpec;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
@@ -20,6 +19,7 @@ import io.github.marcofanti.aauth.personserver.web.AAuthResponses;
 import io.github.marcofanti.aauth.personserver.web.BodyReader;
 import io.github.marcofanti.aauth.personserver.web.BodyValidationException;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.personserver.web.RequestExtract;
 import io.github.marcofanti.aauth.personserver.web.Sanitize;
 import jakarta.servlet.http.HttpServletRequest;
@@ -91,31 +91,56 @@ public class PsAgentController {
         };
     }
 
-    @PostMapping({"/token", "/auth-token"})
+    /** Draft-10 token endpoint ({@code token_endpoint}); kept for dual-stack clients. */
+    @PostMapping("/token")
     public ResponseEntity<Object> postToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
         BodyReader body = BodyReader.parse(raw);
-        String resourceToken = body.requireString("resource_token");
-        String justification = Sanitize.markdownOrNull(body.optString("justification"));
         MissionRef mission = missionRef(body.optMap("mission"));
         if (mission == null) {
             mission = MissionHeader.parseAAuthMissionHeader(signed.header("aauth-mission"));
         }
-        TokenRequest tokenRequest = new TokenRequest(
-                agent.agentId(),
-                resourceToken,
-                justification,
-                body.optString("upstream_token"),
-                body.optString("login_hint"),
-                body.optString("tenant"),
-                body.optString("domain_hint"),
-                mission,
-                agent.agentCnfJwk(),
-                agent.agentJkt(),
-                agent.secureMode());
-        TokenOutcome outcome = ps.tokenBroker().requestToken(tokenRequest);
-        return AAuthResponses.tokenOutcomeResponse(outcome);
+        TokenRequest tokenRequest = tokenRequest(agent, body, mission, null);
+        return AAuthResponses.tokenOutcomeResponse(ps.tokenBroker().requestToken(tokenRequest));
+    }
+
+    /**
+     * Draft-11 {@code auth_token_endpoint} (§7.2.1): {@code presented_token} is REQUIRED and the
+     * mission comes from the verified resource token. Errors are problem+json.
+     */
+    @PostMapping("/auth-token")
+    public ResponseEntity<Object> postAuthToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
+        SignedRequest signed = RequestExtract.signedRequest(request, raw);
+        PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
+        BodyReader body;
+        String presentedToken;
+        try {
+            body = BodyReader.parse(raw);
+            body.requireString("resource_token");
+            presentedToken = body.requireString("presented_token");
+        } catch (BodyValidationException e) {
+            throw new ProblemError(400, "invalid_request", e.getMessage());
+        }
+        TokenRequest tokenRequest =
+                tokenRequest(agent, body, null, new TokenRequest.Draft11(presentedToken, agent.agentTokenExp()));
+        return AAuthResponses.tokenOutcomeResponse(ps.tokenBroker().requestToken(tokenRequest));
+    }
+
+    private static TokenRequest tokenRequest(
+            PsAuth.TokenAgentContext agent, BodyReader body, MissionRef mission, TokenRequest.Draft11 draft11) {
+        return TokenRequest.builder(agent.agentId(), body.requireString("resource_token"))
+                .justification(Sanitize.markdownOrNull(body.optString("justification")))
+                .upstreamToken(body.optString("upstream_token"))
+                .loginHint(body.optString("login_hint"))
+                .tenant(body.optString("tenant"))
+                .domainHint(body.optString("domain_hint"))
+                .mission(mission)
+                .agentCnfJwk(agent.agentCnfJwk())
+                .agentJkt(agent.agentJkt())
+                .secureMode(agent.secureMode())
+                .draft11(draft11)
+                .build();
     }
 
     @PostMapping("/permission")
@@ -221,7 +246,12 @@ public class PsAgentController {
         } else {
             String justification = Sanitize.markdownOrNull(body.optString("justification"));
             outcome = ps.tokenBroker()
-                    .postUpdatedRequest(pendingId, agentId, body.requireString("resource_token"), justification);
+                    .postUpdatedRequest(
+                            pendingId,
+                            agentId,
+                            body.requireString("resource_token"),
+                            justification,
+                            body.optString("presented_token"));
         }
         return AAuthResponses.jsonDeferred(outcome);
     }

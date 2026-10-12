@@ -153,8 +153,8 @@ class SecureTokenFlowTest {
         DeferredResponse deferred =
                 (DeferredResponse) ps.tokenBroker().requestToken(secureRequest("read require:user", PS_ORIGIN));
         String replacement = resourceToken("write require:user", PS_ORIGIN, null);
-        DeferredResponse updated =
-                ps.tokenBroker().postUpdatedRequest(deferred.pendingId(), AGENT_ID, replacement, "new justification");
+        DeferredResponse updated = ps.tokenBroker()
+                .postUpdatedRequest(deferred.pendingId(), AGENT_ID, replacement, "new justification", null);
         assertThat(updated.pendingId()).isEqualTo(deferred.pendingId());
         PendingRecord record = ps.pendingStore().getRecord(deferred.pendingId());
         assertThat(record.verifiedResourceClaims).containsEntry("scope", "write require:user");

@@ -107,8 +107,11 @@ public interface PendingRequestStore {
 
     String getInteractionCode(String pendingId);
 
-    /** Swap the resource token / justification on a token pending (updated request). */
-    void replaceTokenRequest(String pendingId, String resourceToken, String justification);
+    /**
+     * Swap the resource token / justification on a token pending (updated request); a draft-11
+     * request also swaps its presented token (§7.5.2.2).
+     */
+    void replaceTokenRequest(String pendingId, String resourceToken, String justification, String presentedToken);
 
     String interactionBaseUrl();
 
