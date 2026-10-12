@@ -28,16 +28,19 @@ final class Draft11Checks {
     private final Function<String, Map<String, Object>> resourceJwks;
     private final Function<String, Map<String, Object>> ownJwks;
     private final RevocationStore revocations;
+    private final UpstreamTokens upstreamTokens;
 
     Draft11Checks(
             String psOrigin,
             Function<String, Map<String, Object>> resourceJwks,
             Function<String, Map<String, Object>> ownJwks,
-            RevocationStore revocations) {
+            RevocationStore revocations,
+            UpstreamTokens upstreamTokens) {
         this.psOrigin = MissionUtils.stripTrailingSlash(psOrigin);
         this.resourceJwks = resourceJwks;
         this.ownJwks = ownJwks;
         this.revocations = revocations;
+        this.upstreamTokens = upstreamTokens;
     }
 
     /** Verify both tokens and their binding; returns the verified resource token claims. */
@@ -48,6 +51,11 @@ final class Draft11Checks {
         Map<String, Object> resource = verifyResourceToken(request);
         Map<String, Object> presented = verifyPresentedToken(request.draft11().presentedToken(), resource);
         crossCheck(resource, presented, request.agentJkt());
+        if (request.upstreamToken() != null) {
+            upstreamTokens.verify(
+                    request.upstreamToken(),
+                    Jwts.parse(request.draft11().agentToken()).claim("iss"));
+        }
         return resource;
     }
 
@@ -177,11 +185,19 @@ final class Draft11Checks {
         } catch (RuntimeException e) {
             throw new ProblemError(400, ProblemError.INVALID_PRESENTED_TOKEN, "presented_token is not a JWT");
         }
-        Long agentExp = request.draft11().agentTokenExp();
-        if (agentExp == null) {
-            return presentedExp;
+        Long cap = earliest(request.draft11().agentTokenExp(), presentedExp);
+        if (request.upstreamToken() != null) {
+            // §9.4.1: an auth token issued on a request carrying upstream_token does not outlive it.
+            cap = earliest(cap, Jwts.parse(request.upstreamToken()).numericClaim("exp"));
         }
-        return presentedExp == null ? agentExp : Math.min(agentExp, presentedExp);
+        return cap;
+    }
+
+    private static Long earliest(Long a, Long b) {
+        if (a == null) {
+            return b;
+        }
+        return b == null ? a : Math.min(a, b);
     }
 
     /** {@link #maxExp(TokenRequest)}, further capped at the mission's {@code expires_at} (§9.4.1). */

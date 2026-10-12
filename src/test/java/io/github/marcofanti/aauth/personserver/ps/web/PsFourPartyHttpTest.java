@@ -134,7 +134,7 @@ class PsFourPartyHttpTest {
 
     private String personToken() {
         PersonTokenRequest request = new PersonTokenRequest(
-                AGENT_ID, jwk(AGENT_KEY, "eph"), RESOURCE_ISS, null, null, inOneHour(), null, null, null, null);
+                AGENT_ID, jwk(AGENT_KEY, "eph"), RESOURCE_ISS, null, null, inOneHour(), null, null, null, null, null);
         return ps.personTokenIssuer().issue(request, "user").personToken();
     }
 

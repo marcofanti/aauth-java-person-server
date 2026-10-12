@@ -16,6 +16,7 @@ import java.util.Map;
  * @param resourceDescription the resource's metadata {@code description}, or {@code null}
  * @param resourceAccessMode the resource's metadata {@code access_mode}, or {@code null}
  * @param justification agent-asserted reason for the request, or {@code null}
+ * @param upstream the upstream token a call-chaining request presented (§10.1.1), or {@code null}
  */
 public record PersonTokenRequest(
         String agentId,
@@ -27,4 +28,9 @@ public record PersonTokenRequest(
         String resourceName,
         String resourceDescription,
         String resourceAccessMode,
-        String justification) {}
+        String justification,
+        Upstream upstream) {
+
+    /** The upstream token {@code (iss, jti)} a person token was issued on, kept for revocation (§11.12.4). */
+    public record Upstream(String iss, String jti) {}
+}

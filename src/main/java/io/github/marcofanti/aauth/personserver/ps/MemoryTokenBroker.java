@@ -15,6 +15,7 @@ import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
+import io.github.marcofanti.aauth.signing.Jwts;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -55,18 +56,28 @@ public final class MemoryTokenBroker implements TokenBroker {
             String agentJwtStub,
             boolean autoApproveWithoutConsent,
             MissionEvaluator evaluator,
-            RevocationStore revocations) {
+            RevocationStore revocations,
+            UpstreamTokens upstreamTokens) {
         this.store = store;
         this.federator = federator;
         this.mission = mission;
         this.psOrigin = IssuerUrls.normalizeIssuer(psOrigin);
         this.authIssuer = authIssuer;
         this.resourceJwks = resourceJwks;
-        this.draft11Checks = new Draft11Checks(psOrigin, resourceJwks, iss -> authIssuer.jwks(), revocations);
+        this.draft11Checks =
+                new Draft11Checks(psOrigin, resourceJwks, iss -> authIssuer.jwks(), revocations, upstreamTokens);
         this.consentScopes = consentScopes;
         this.agentJwtStub = agentJwtStub;
         this.autoApproveWithoutConsent = autoApproveWithoutConsent;
         this.evaluator = evaluator;
+    }
+
+    /** §10.1.1: a pending downstream request ends {@code expired} when its upstream token does. */
+    private static Long upstreamDeadline(TokenRequest request) {
+        if (request.draft11() == null || request.upstreamToken() == null) {
+            return null;
+        }
+        return Jwts.parse(request.upstreamToken()).numericClaim("exp");
     }
 
     /** Replace the Layer 1 evaluator (tests exercise forced allow/deny/clarify paths). */
@@ -202,6 +213,7 @@ public final class MemoryTokenBroker implements TokenBroker {
         if (evaluatorReason != null) {
             record.evaluatorReason = evaluatorReason;
         }
+        record.deadline = upstreamDeadline(request);
         store.saveRecord(record);
         store.updatePending(pendingId, PendingUpdate.ofRequirement(RequirementLevel.INTERACTION));
         PendingStoreValue value = store.getPending(pendingId, false);
@@ -248,6 +260,7 @@ public final class MemoryTokenBroker implements TokenBroker {
                 record.verifiedResourceClaims = emptyToNull(resourceClaims);
                 record.tokenAgentCnfJwk = request.agentCnfJwk();
                 record.evaluatorReason = decision.reason();
+                record.deadline = upstreamDeadline(request);
                 store.saveRecord(record);
                 store.updatePending(
                         pendingId,

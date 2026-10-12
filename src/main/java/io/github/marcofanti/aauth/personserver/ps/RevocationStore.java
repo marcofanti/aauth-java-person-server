@@ -17,4 +17,10 @@ public interface RevocationStore {
 
     /** The {@code sub} an accepted agent token carried, or {@code null} if never seen. */
     String agentSub(String iss, String jti);
+
+    /** Record that an agent token of {@code agentSub} was revoked at {@code epochSeconds} (§9.4.5 step 4). */
+    void recordAgentRevocation(String agentSub, long epochSeconds);
+
+    /** When an agent token of {@code agentSub} was last revoked, or {@code null} if never. */
+    Long agentRevokedAt(String agentSub);
 }

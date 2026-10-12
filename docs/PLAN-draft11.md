@@ -113,12 +113,16 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-112 resource-token revocation | done | `revoked_resource_token`; open pendings started for it fail with polling error `revoked` |
 | PS-113 outbound revocation | done | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` (resources) or `aauth-access.json` (ASes) |
 | PS-114 downstream outcomes | done | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry; an AS's `downstream` array is logged |
-| PS-115 records | done (three-party) | agent tokens `(iss, jti, sub, exp)`; person/auth tokens already recorded; upstream `(iss, jti)` with Phase 6 |
+| PS-115 records | done | agent tokens `(iss, jti, sub, exp)`; person tokens with presentations and upstream `(iss, jti)`; PS-issued auth tokens; agent revocation times by `sub`. The cascade follows person tokens issued on a revoked token as `upstream_token` |
 | PS-103 JWT checks | done | library: `exp` without tolerance, `typ` first, person-token `exp − iat` ≤ 1h; PS: presented auth tokens need `iat` and `exp − iat` ≤ 1h. The optional future-`iat` `clock_skew` is not applied |
 | PS-104 uppercase agent identifiers | done (PS) | agent ids compared exactly, no case folding; library `Identifiers` still rejects uppercase in `parent_agent` (library finding) |
 | PS-50..54 four-party federation | done | `HttpAsFederator`: discovers `aauth-access.json`, POSTs `resource_token`/`agent_token`/`presented_token` (+ `upstream_token`) signed as the PS, follows 202s (claims answered, others polled with a signed GET) within 20 s, verifies the §9.1.3 delivery checks, relays well-formed AS errors, else 502 `as_unreachable`; presentations recorded for revocation. Draft-10 requests keep the fake federator |
 | PS-55 claims without `sub` | done | the PS releases no claims (it holds none beyond the directed `sub`, which is never sent) |
-| PS-60..64 call chaining | pending | Phase 6 |
+| PS-60 person tokens on `upstream_token` | done | issued for the upstream person, `mission_s256` copied from the upstream token, `exp` capped by it; the intermediary sends no `mission_s256`/`subagent_token`; upstream `(iss, jti)` recorded |
+| PS-61 upstream verification | done | `UpstreamTokens`: person or auth `typ`; `aud` = the intermediary's agent-token `iss`; person-token `iss` / auth-token `ps` is this PS; auth-token `iss` is this PS or an AS it presented a person token to for that `aud`/`sub`; calling agent and person from the PS's records; `revoked_upstream_token` for a revoked token or an agent whose agent token was revoked after the upstream token was issued |
+| PS-62 no `act`, no copied `sub` | done | the downstream `sub` comes from the downstream resource token |
+| PS-63 no intermediary binding | done | an intermediary's request neither uses nor establishes a binding |
+| PS-64 upstream expiry ends pendings | done | the pending gets a `deadline` at the upstream `exp`, after which it is `expired` whatever its state |
 
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so

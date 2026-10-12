@@ -84,4 +84,34 @@ class SqlRevocationStoreTest {
         assertThat(store.openPendingForResourceToken("https://rs.example", "rt-1"))
                 .isEmpty();
     }
+
+    @Test
+    void agentRevocationTimesKeepTheLatest() {
+        forBoth(store -> {
+            assertThat(store.agentRevokedAt("aauth:a@ap")).isNull();
+            store.recordAgentRevocation("aauth:a@ap", 200);
+            store.recordAgentRevocation("aauth:a@ap", 100);
+            assertThat(store.agentRevokedAt("aauth:a@ap")).isEqualTo(200L);
+            store.recordAgentRevocation("aauth:a@ap", 300);
+            assertThat(store.agentRevokedAt("aauth:a@ap")).isEqualTo(300L);
+        });
+    }
+
+    @Test
+    void aPendingPastItsDeadlineEndsExpiredEvenWhileInteracting() {
+        SqlPendingStore store =
+                new SqlPendingStore(db.dataSource(), new SqlMissionState(db.dataSource()), "https://ps.example", 600);
+        String pendingId =
+                store.createPending(TokenRequest.builder("agent", "rt").build());
+        store.updatePending(
+                pendingId,
+                io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate.ofStatus(
+                        io.github.marcofanti.aauth.personserver.model.PendingStatus.INTERACTING));
+        PendingRecord record = store.getRecord(pendingId);
+        record.deadline = java.time.Instant.now().getEpochSecond() - 1;
+        store.saveRecord(record);
+
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> store.getPending(pendingId, false)))
+                .isInstanceOf(io.github.marcofanti.aauth.personserver.ps.PendingExpiredException.class);
+    }
 }

@@ -123,6 +123,7 @@ public final class PendingSerde {
         out.put("token_agent_cnf_jwk", record.tokenAgentCnfJwk);
         out.put("evaluator_reason", record.evaluatorReason);
         out.put("person_token_request", personTokenRequestToDict(record.personTokenRequest));
+        out.put("deadline", record.deadline);
         return out;
     }
 
@@ -141,7 +142,22 @@ public final class PendingSerde {
         out.put("resource_description", request.resourceDescription());
         out.put("resource_access_mode", request.resourceAccessMode());
         out.put("justification", request.justification());
+        if (request.upstream() != null) {
+            out.put(
+                    "upstream",
+                    Map.of(
+                            "iss",
+                            request.upstream().iss(),
+                            "jti",
+                            request.upstream().jti()));
+        }
         return out;
+    }
+
+    static PersonTokenRequest.Upstream upstreamFromDict(Map<String, Object> data) {
+        return data == null
+                ? null
+                : new PersonTokenRequest.Upstream(stringOrNull(data.get("iss")), stringOrNull(data.get("jti")));
     }
 
     static TokenRequest.Draft11 draft11FromDict(Map<String, Object> data) {
@@ -168,7 +184,8 @@ public final class PendingSerde {
                 stringOrNull(data.get("resource_name")),
                 stringOrNull(data.get("resource_description")),
                 stringOrNull(data.get("resource_access_mode")),
-                stringOrNull(data.get("justification")));
+                stringOrNull(data.get("justification")),
+                upstreamFromDict(mapOrNull(data.get("upstream"))));
     }
 
     @SuppressWarnings("unchecked")
@@ -222,6 +239,7 @@ public final class PendingSerde {
         record.tokenAgentCnfJwk = mapOrNull(data.get("token_agent_cnf_jwk"));
         record.evaluatorReason = stringOrNull(data.get("evaluator_reason"));
         record.personTokenRequest = personTokenRequestFromDict(mapOrNull(data.get("person_token_request")));
+        record.deadline = data.get("deadline") instanceof Number n ? n.longValue() : null;
         return record;
     }
 

@@ -2,9 +2,13 @@ package io.github.marcofanti.aauth.personserver.ps;
 
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -84,7 +88,11 @@ public final class RevocationService {
             return List.of();
         }
         String sub = deps.revocations().agentSub(iss, jti);
-        return sub == null ? List.of() : cascade(sub, now);
+        if (sub == null) {
+            return List.of();
+        }
+        deps.revocations().recordAgentRevocation(sub, now);
+        return cascade(sub, now);
     }
 
     private void throttle(String iss, long now) {
@@ -104,18 +112,33 @@ public final class RevocationService {
     /** §11.12.4: revoke every live person and auth token issued to the agent, wherever it went. */
     private List<Downstream> cascade(String agentSub, long now) {
         List<Target> targets = new ArrayList<>();
-        for (PersonTokenLedger.Issued issued : deps.personTokens().liveFor(agentSub, now)) {
+        // Revoked jtis whose derived person tokens (issued with them as upstream_token) follow.
+        Deque<String> upstreams = new ArrayDeque<>();
+        for (Map<String, Object> row : deps.authTokens().listIssued()) {
+            Target target = liveAuthToken(row, agentSub, now);
+            if (target != null) {
+                targets.add(target);
+                upstreams.add(target.token().jti());
+            }
+        }
+        Deque<PersonTokenLedger.Issued> personTokens =
+                new ArrayDeque<>(deps.personTokens().liveFor(agentSub, now));
+        Set<String> seen = new HashSet<>();
+        while (!personTokens.isEmpty() || !upstreams.isEmpty()) {
+            if (!upstreams.isEmpty()) {
+                personTokens.addAll(deps.personTokens().issuedFromUpstream(psOrigin, upstreams.pop()));
+                continue;
+            }
+            PersonTokenLedger.Issued issued = personTokens.pop();
+            if (issued.exp() <= now || !seen.add(issued.jti())) {
+                continue;
+            }
             Token token = new Token(issued.jti(), issued.exp());
             targets.add(new Target(issued.aud(), RevocationSender.RESOURCE_METADATA, token));
             for (String accessServer : deps.personTokens().presentedTo(issued.jti())) {
                 targets.add(new Target(accessServer, RevocationSender.ACCESS_METADATA, token));
             }
-        }
-        for (Map<String, Object> row : deps.authTokens().listIssued()) {
-            Target target = liveAuthToken(row, agentSub, now);
-            if (target != null) {
-                targets.add(target);
-            }
+            upstreams.add(issued.jti());
         }
         List<CompletableFuture<Downstream>> calls = new ArrayList<>();
         for (Target target : targets) {

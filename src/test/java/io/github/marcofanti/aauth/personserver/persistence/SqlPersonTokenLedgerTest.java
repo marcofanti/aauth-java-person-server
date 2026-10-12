@@ -57,7 +57,7 @@ class SqlPersonTokenLedgerTest {
         SqlPendingStore store =
                 new SqlPendingStore(db.dataSource(), new SqlMissionState(db.dataSource()), "http://test.example", 600);
         PersonTokenRequest request = new PersonTokenRequest(
-                "agent", Map.of("kty", "OKP"), "https://a.example", null, null, NOW + 600, "A", null, null, null);
+                "agent", Map.of("kty", "OKP"), "https://a.example", null, null, NOW + 600, "A", null, null, null, null);
         String pendingId = store.createPersonTokenPending(request, "user");
 
         PendingRecord record = store.getRecord(pendingId);
@@ -89,5 +89,22 @@ class SqlPersonTokenLedgerTest {
         assertThat(ledger.liveFor("agent", NOW))
                 .extracting(PersonTokenLedger.Issued::jti)
                 .containsExactly("live");
+    }
+
+    @Test
+    void upstreamLinksAndSubjectsPersist() {
+        SqlPersonTokenLedger ledger = new SqlPersonTokenLedger(db.dataSource());
+        ledger.recordIssued(new PersonTokenLedger.Issued("down", "chain", "user", "https://d.example", "d", NOW + 60));
+        ledger.recordIssued(new PersonTokenLedger.Issued("up", "agent", "user", "https://u.example", "u", NOW + 60));
+        ledger.recordUpstream("down", "https://ps.example/", "up");
+
+        assertThat(ledger.issuedFromUpstream("https://ps.example", "up"))
+                .extracting(PersonTokenLedger.Issued::jti)
+                .containsExactly("down");
+        assertThat(ledger.issuedFromUpstream("https://ps.example", "other")).isEmpty();
+        assertThat(ledger.findBySubject("https://u.example/", "u"))
+                .extracting(PersonTokenLedger.Issued::jti)
+                .containsExactly("up");
+        assertThat(ledger.findBySubject("https://u.example", "x")).isEmpty();
     }
 }

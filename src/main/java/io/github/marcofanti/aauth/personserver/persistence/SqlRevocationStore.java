@@ -60,4 +60,21 @@ public final class SqlRevocationStore implements RevocationStore {
                 jti);
         return rows.isEmpty() ? null : rows.getFirst();
     }
+
+    @Override
+    public synchronized void recordAgentRevocation(String agentSub, long epochSeconds) {
+        Long previous = agentRevokedAt(agentSub);
+        if (previous == null) {
+            jdbc.update("INSERT INTO ps_agent_revocation (sub, revoked_at) VALUES (?, ?)", agentSub, epochSeconds);
+        } else if (epochSeconds > previous) {
+            jdbc.update("UPDATE ps_agent_revocation SET revoked_at = ? WHERE sub = ?", epochSeconds, agentSub);
+        }
+    }
+
+    @Override
+    public Long agentRevokedAt(String agentSub) {
+        List<Long> rows =
+                jdbc.queryForList("SELECT revoked_at FROM ps_agent_revocation WHERE sub = ?", Long.class, agentSub);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
 }

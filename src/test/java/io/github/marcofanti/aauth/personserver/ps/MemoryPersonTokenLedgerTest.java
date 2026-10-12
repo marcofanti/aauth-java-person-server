@@ -51,7 +51,8 @@ class MemoryPersonTokenLedgerTest {
                 "A Resource",
                 "Does things",
                 "person-token",
-                "because");
+                "because",
+                null);
         PendingRecord record = new PendingRecord("pid", "code", "person_token", Instant.now(), 600);
         record.personTokenRequest = request;
 

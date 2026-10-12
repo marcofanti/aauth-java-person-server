@@ -69,6 +69,34 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
     }
 
     @Override
+    public void recordUpstream(String jti, String upstreamIss, String upstreamJti) {
+        jdbc.update(
+                "INSERT INTO ps_person_token_upstream (jti, upstream_iss, upstream_jti) VALUES (?, ?, ?)",
+                jti,
+                MissionUtils.stripTrailingSlash(upstreamIss),
+                upstreamJti);
+    }
+
+    @Override
+    public List<Issued> issuedFromUpstream(String upstreamIss, String upstreamJti) {
+        return jdbc.query(
+                "SELECT t.* FROM ps_person_token t JOIN ps_person_token_upstream u ON u.jti = t.jti "
+                        + "WHERE u.upstream_iss = ? AND u.upstream_jti = ?",
+                SqlPersonTokenLedger::issued,
+                MissionUtils.stripTrailingSlash(upstreamIss),
+                upstreamJti);
+    }
+
+    @Override
+    public List<Issued> findBySubject(String aud, String sub) {
+        return jdbc.query(
+                "SELECT * FROM ps_person_token WHERE aud = ? AND sub = ?",
+                SqlPersonTokenLedger::issued,
+                MissionUtils.stripTrailingSlash(aud),
+                sub);
+    }
+
+    @Override
     public List<Issued> liveFor(String agentId, long nowEpochSeconds) {
         return jdbc.query(
                 "SELECT * FROM ps_person_token WHERE agent_id = ? AND exp > ?",

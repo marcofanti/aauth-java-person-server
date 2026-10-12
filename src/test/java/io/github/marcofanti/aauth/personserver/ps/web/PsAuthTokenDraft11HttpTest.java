@@ -120,7 +120,7 @@ class PsAuthTokenDraft11HttpTest {
 
     private String personToken(KeyPair boundKey, String resource, String tenant) {
         PersonTokenRequest request = new PersonTokenRequest(
-                AGENT_ID, jwk(boundKey, "eph"), resource, null, tenant, inOneHour(), null, null, null, null);
+                AGENT_ID, jwk(boundKey, "eph"), resource, null, tenant, inOneHour(), null, null, null, null, null);
         return ps.personTokenIssuer().issue(request, "user").personToken();
     }
 

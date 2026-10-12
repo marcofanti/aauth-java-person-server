@@ -174,4 +174,29 @@ class RevocationServiceTest {
                 .containsExactlyInAnyOrder(
                         "pt-1@" + RS + "#" + (NOW + 300), "pt-1@https://as.example#" + (NOW + 300) + " (AS)");
     }
+
+    @Test
+    void theCascadeFollowsPersonTokensIssuedOnARevokedTokenAsUpstream() {
+        revocations.recordAgentToken(AP, "agent-jti", AGENT, NOW + 600);
+        personTokens.recordIssued(new PersonTokenLedger.Issued("pt-1", AGENT, "user", RS, "sub", NOW + 300));
+        issueAuthToken(AGENT, "at-1", NOW + 200);
+        String downstream = "https://downstream.example";
+        personTokens.recordIssued(
+                new PersonTokenLedger.Issued("pt-2", "aauth:chain@rs", "user", downstream, "d", NOW + 300));
+        personTokens.recordUpstream("pt-2", PS, "pt-1");
+        personTokens.recordIssued(
+                new PersonTokenLedger.Issued("pt-3", "aauth:chain@rs", "user", downstream, "d", NOW + 300));
+        personTokens.recordUpstream("pt-3", PS, "at-1");
+        personTokens.recordIssued(
+                new PersonTokenLedger.Issued("pt-4", "aauth:hop@ds", "user", "https://third.example", "t", NOW + 300));
+        personTokens.recordUpstream("pt-4", PS, "pt-2");
+
+        service.revoke(AP, CallerKind.AGENT_PROVIDER, "agent-jti", NOW + 600);
+
+        assertThat(revocations.isRevoked(PS, "pt-2")).isTrue();
+        assertThat(revocations.isRevoked(PS, "pt-3")).isTrue();
+        assertThat(revocations.isRevoked(PS, "pt-4")).isTrue();
+        assertThat(sent).hasSize(5);
+        assertThat(revocations.agentRevokedAt(AGENT)).isBetween(NOW, NOW + 5);
+    }
 }

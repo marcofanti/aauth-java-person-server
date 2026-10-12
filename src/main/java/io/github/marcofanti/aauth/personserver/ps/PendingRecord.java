@@ -57,6 +57,8 @@ public final class PendingRecord {
     public volatile Map<String, Object> tokenAgentCnfJwk;
     public volatile String evaluatorReason;
     public volatile PersonTokenRequest personTokenRequest;
+    /** Epoch second after which the pending ends {@code expired} whatever its state (§10.1.1). */
+    public volatile Long deadline;
 
     public PendingRecord(String pendingId, String interactionCode, String kind, Instant createdAt, int ttlSeconds) {
         this.pendingId = pendingId;

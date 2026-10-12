@@ -39,6 +39,23 @@ class PendingTtlTest {
     }
 
     @Test
+    void aPendingPastItsDeadlineEndsExpiredEvenWhileInteracting() {
+        MemoryPendingStore store = storeWithTtl(600);
+        String pendingId = tokenPending(store);
+        store.updatePending(pendingId, PendingUpdate.ofStatus(PendingStatus.INTERACTING));
+        store.getRecord(pendingId).deadline = java.time.Instant.now().getEpochSecond() - 1;
+        assertThatThrownBy(() -> store.getPending(pendingId, false)).isInstanceOf(PendingExpiredException.class);
+    }
+
+    @Test
+    void aPendingBeforeItsDeadlineStaysOpen() {
+        MemoryPendingStore store = storeWithTtl(600);
+        String pendingId = tokenPending(store);
+        store.getRecord(pendingId).deadline = java.time.Instant.now().getEpochSecond() + 60;
+        assertThat(store.getPending(pendingId, false)).isNotNull();
+    }
+
+    @Test
     void expiredCodeLookupIsInvalidAndPurged() {
         MemoryPendingStore store = storeWithTtl(-1);
         String pendingId = tokenPending(store);

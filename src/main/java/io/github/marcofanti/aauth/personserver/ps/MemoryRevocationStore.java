@@ -8,6 +8,7 @@ public final class MemoryRevocationStore implements RevocationStore {
 
     private final Map<String, Long> revoked = new ConcurrentHashMap<>();
     private final Map<String, String> agentSubs = new ConcurrentHashMap<>();
+    private final Map<String, Long> agentRevocations = new ConcurrentHashMap<>();
 
     private static String key(String iss, String jti) {
         return MissionUtils.stripTrailingSlash(iss) + "\u0000" + jti;
@@ -31,5 +32,15 @@ public final class MemoryRevocationStore implements RevocationStore {
     @Override
     public String agentSub(String iss, String jti) {
         return agentSubs.get(key(iss, jti));
+    }
+
+    @Override
+    public void recordAgentRevocation(String agentSub, long epochSeconds) {
+        agentRevocations.merge(agentSub, epochSeconds, Math::max);
+    }
+
+    @Override
+    public Long agentRevokedAt(String agentSub) {
+        return agentRevocations.get(agentSub);
     }
 }

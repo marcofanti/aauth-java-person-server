@@ -35,6 +35,7 @@ public final class PersonTokenService {
             String resource,
             String missionS256,
             String subagentToken,
+            String upstreamToken,
             List<String> capabilities,
             String tenant,
             String justification) {}
@@ -52,7 +53,8 @@ public final class PersonTokenService {
             PendingRequestStore pending,
             PersonTokenIssuer issuer,
             Function<String, Map<String, Object>> agentJwks,
-            Function<String, Map<String, Object>> resourceMetadata) {}
+            Function<String, Map<String, Object>> resourceMetadata,
+            UpstreamTokens upstreamTokens) {}
 
     private final Deps deps;
     private final String person;
@@ -70,7 +72,11 @@ public final class PersonTokenService {
                     400, "invalid_request", "a person token binds the agent's key: sign with scheme=jwt");
         }
         String resource = validResource(params.resource());
-        Mission mission = activeMissionOf(agent.agentId(), params.missionS256());
+        UpstreamTokens.Upstream upstream = upstreamOf(agent, params);
+        // §7.1 Which person: the bound person, or with upstream_token the person it was issued for.
+        String forPerson = upstream != null ? upstream.person() : person;
+        String missionS256 = upstream != null ? upstream.missionS256() : params.missionS256();
+        Mission mission = activeMissionOf(upstream != null ? upstream.callingAgent() : agent.agentId(), missionS256);
         Holder holder = holderFor(agent, params.subagentToken());
 
         if (deps.issuer().distinctLiveResources(holder.agentId(), resource) >= MAX_DISTINCT_RESOURCES) {
@@ -83,16 +89,19 @@ public final class PersonTokenService {
                 holder.agentId(),
                 holder.cnfJwk(),
                 resource,
-                params.missionS256(),
+                missionS256,
                 params.tenant(),
-                earliest(holder.maxExp(), Draft11MissionStatus.capFor(mission)),
+                earliest(
+                        earliest(holder.maxExp(), Draft11MissionStatus.capFor(mission)),
+                        upstream != null ? upstream.exp() : null),
                 string(metadata, "name"),
                 string(metadata, "description"),
                 string(metadata, "access_mode"),
-                params.justification());
+                params.justification(),
+                upstream != null ? new PersonTokenRequest.Upstream(upstream.iss(), upstream.jti()) : null);
 
-        if (autoApprove || deps.issuer().isApproved(person, resource)) {
-            return new Outcome.Issued(deps.issuer().issue(request, person));
+        if (autoApprove || deps.issuer().isApproved(forPerson, resource)) {
+            return new Outcome.Issued(deps.issuer().issue(request, forPerson));
         }
         List<String> capabilities = params.capabilities() != null
                 ? params.capabilities()
@@ -104,12 +113,27 @@ public final class PersonTokenService {
                     "first use of this resource needs the person's approval and the agent did not declare"
                             + " the interaction capability");
         }
-        String pendingId = deps.pending().createPersonTokenPending(request, person);
+        String pendingId = deps.pending().createPersonTokenPending(request, forPerson);
         PendingStoreValue value = deps.pending().getPending(pendingId, false);
         if (!(value instanceof DeferredResponse deferred)) {
             throw new IllegalStateException("new person token pending " + pendingId + " is not deferred");
         }
         return new Outcome.Deferred(deferred);
+    }
+
+    /**
+     * §7.1, §10.1.1: verify a call-chaining upstream token; the intermediary sends no mission or
+     * sub-agent of its own, since the upstream token carries the mission.
+     */
+    private UpstreamTokens.Upstream upstreamOf(TokenAgentContext agent, Params params) {
+        if (params.upstreamToken() == null) {
+            return null;
+        }
+        if (params.missionS256() != null || params.subagentToken() != null) {
+            throw new ProblemError(
+                    400, "invalid_request", "upstream_token is sent without mission_s256 or subagent_token");
+        }
+        return deps.upstreamTokens().verify(params.upstreamToken(), agent.agentIss());
     }
 
     private static String validResource(String resource) {

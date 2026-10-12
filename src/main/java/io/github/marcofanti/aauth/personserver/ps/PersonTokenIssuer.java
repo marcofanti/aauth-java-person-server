@@ -85,6 +85,10 @@ public final class PersonTokenIssuer {
         String jti = Jwts.parse(token).claim("jti");
         ledger.recordIssued(new PersonTokenLedger.Issued(
                 jti, request.agentId(), person, MissionUtils.stripTrailingSlash(request.resource()), sub, exp));
+        if (request.upstream() != null) {
+            ledger.recordUpstream(
+                    jti, request.upstream().iss(), request.upstream().jti());
+        }
         return new Issued(token, exp - now);
     }
 }

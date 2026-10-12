@@ -25,6 +25,15 @@ public interface PersonTokenLedger {
     /** The ASes a person token was presented to, which a revocation of it must reach. */
     List<String> presentedTo(String jti);
 
+    /** Record that person token {@code jti} was issued on the upstream token {@code (iss, jti)} (§11.12.4). */
+    void recordUpstream(String jti, String upstreamIss, String upstreamJti);
+
+    /** Person tokens issued on the upstream token {@code (iss, jti)}, which its revocation reaches. */
+    List<Issued> issuedFromUpstream(String upstreamIss, String upstreamJti);
+
+    /** Person tokens issued for directed identifier {@code sub} at {@code aud} (§9.4.5 step 4). */
+    List<Issued> findBySubject(String aud, String sub);
+
     /** Unexpired person tokens issued to {@code agentId}, for the revocation cascade (§11.12.4). */
     List<Issued> liveFor(String agentId, long nowEpochSeconds);
 

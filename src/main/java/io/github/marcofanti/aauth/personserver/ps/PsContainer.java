@@ -22,4 +22,5 @@ public record PsContainer(
         ConsentScopeStore consentScopes,
         PersonTokenIssuer personTokenIssuer,
         PersonTokenLedger personTokenLedger,
-        RevocationStore revocations) {}
+        RevocationStore revocations,
+        UpstreamTokens upstreamTokens) {}

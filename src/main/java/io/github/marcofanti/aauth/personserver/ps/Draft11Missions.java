@@ -119,7 +119,7 @@ public final class Draft11Missions {
         Map<String, String> personTokens = new LinkedHashMap<>();
         for (String resource : resources) {
             PersonTokenRequest request = new PersonTokenRequest(
-                    agent.agentId(), agent.agentCnfJwk(), resource, s256, null, maxExp, null, null, null, null);
+                    agent.agentId(), agent.agentCnfJwk(), resource, s256, null, maxExp, null, null, null, null, null);
             personTokens.put(resource, issuer.approveAndIssue(request, person).personToken());
         }
         return new Approval(s256, bytes, capabilities, personTokens);

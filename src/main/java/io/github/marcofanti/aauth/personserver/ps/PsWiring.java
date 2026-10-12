@@ -169,6 +169,26 @@ public final class PsWiring {
         };
     }
 
+    /** Call-chaining verification over the PS's own records (§9.4.5). */
+    public static UpstreamTokens upstreamTokens(
+            String origin,
+            PsSigningService psSigning,
+            PersonTokenLedger personTokens,
+            IssuedTokenStore authTokens,
+            RevocationStore revocations) {
+        return new UpstreamTokens(
+                origin,
+                psSigning::getJwks,
+                iss -> {
+                    try {
+                        return SyncHttp.discoverJwksViaMetadata(iss, "aauth-access.json");
+                    } catch (IllegalArgumentException e) {
+                        return null;
+                    }
+                },
+                new UpstreamTokens.Records(personTokens, authTokens, revocations));
+    }
+
     /** Wire in-memory stores, PS signing, trust registry, and token broker. */
     public static PsContainer buildMemoryPs(Options options) {
         PsBackend backend = new PsBackend();
@@ -190,6 +210,8 @@ public final class PsWiring {
         MemoryMissionLifecycle lifecycle =
                 new MemoryMissionLifecycle(backend, store, origin, options.autoApproveMission());
         RevocationStore revocations = new MemoryRevocationStore();
+        UpstreamTokens upstreamTokens =
+                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations);
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,
@@ -201,7 +223,8 @@ public final class PsWiring {
                 options.agentJwtStub(),
                 options.autoApproveToken(),
                 buildEvaluator(options.missionEvaluator()),
-                revocations);
+                revocations,
+                upstreamTokens);
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(
@@ -232,6 +255,7 @@ public final class PsWiring {
                 consentScopes,
                 personTokenIssuer,
                 personTokenLedger,
-                revocations);
+                revocations,
+                upstreamTokens);
     }
 }

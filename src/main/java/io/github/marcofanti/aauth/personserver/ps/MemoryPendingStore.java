@@ -163,6 +163,10 @@ public final class MemoryPendingStore implements PendingRequestStore {
         if (record.terminal != null || record.gone || record.failure != null) {
             return;
         }
+        if (record.deadline != null && Instant.now().getEpochSecond() >= record.deadline) {
+            failPending(record.pendingId, "expired");
+            return;
+        }
         long elapsed = Duration.between(record.createdAt, Instant.now()).toSeconds();
         if (elapsed <= record.ttlSeconds) {
             return;

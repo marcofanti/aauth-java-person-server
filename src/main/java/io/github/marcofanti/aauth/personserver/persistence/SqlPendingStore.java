@@ -199,6 +199,11 @@ public final class SqlPendingStore implements PendingRequestStore {
         if (!isOpen(record)) {
             return;
         }
+        if (record.deadline != null && Instant.now().getEpochSecond() >= record.deadline) {
+            failPending(record.pendingId, "expired");
+            record.failure = "expired";
+            return;
+        }
         long elapsed = Duration.between(record.createdAt, Instant.now()).toSeconds();
         if (elapsed <= record.ttlSeconds) {
             return;

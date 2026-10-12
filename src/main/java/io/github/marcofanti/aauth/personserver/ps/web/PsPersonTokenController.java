@@ -36,7 +36,8 @@ public class PsPersonTokenController {
                         ps.pendingStore(),
                         ps.personTokenIssuer(),
                         ps.agentJwksResolver(),
-                        resource -> SyncHttp.fetchJson(resource + "/.well-known/aauth-resource.json")),
+                        resource -> SyncHttp.fetchJson(resource + "/.well-known/aauth-resource.json"),
+                        ps.upstreamTokens()),
                 settings.userId(),
                 settings.autoApproveToken());
     }
@@ -74,6 +75,7 @@ public class PsPersonTokenController {
                     body.optString("resource"),
                     body.optString("mission_s256"),
                     body.optString("subagent_token"),
+                    body.optString("upstream_token"),
                     capabilities,
                     body.optString("tenant"),
                     body.optString("justification"));
