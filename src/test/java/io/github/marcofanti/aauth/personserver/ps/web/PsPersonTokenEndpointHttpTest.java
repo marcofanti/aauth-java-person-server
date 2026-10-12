@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,6 +44,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class PsPersonTokenEndpointHttpTest {
 
     private static final String PS_ORIGIN = "http://localhost";
+    private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
+    // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
+    private static final String JSON_UTF8 = "application/json;charset=UTF-8";
     private static final String AGENT_ID = "aauth:planner.7f3c@agent-server.example";
     private static final String RESOURCE = "https://rs.example";
 
@@ -115,16 +119,16 @@ class PsPersonTokenEndpointHttpTest {
                 .headers(
                         body == null
                                 ? Map.of("Host", "localhost")
-                                : Map.of("Host", "localhost", "Content-Type", "application/json"))
+                                : Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
                 .keyPair(key)
                 .scheme(new SignatureScheme.Jwt(token));
         if (body != null) {
-            spec.body(body);
+            spec.body(body).additionalComponents(BODY_COMPONENTS);
         }
         Map<String, String> headers = RequestSigner.sign(spec.build());
         MockHttpServletRequestBuilder request = "GET".equals(method) ? get(path) : post(path);
         if (body != null) {
-            request.contentType("application/json").content(body);
+            request.contentType(JSON_UTF8).content(body);
         }
         headers.forEach(request::header);
         return request;
@@ -161,6 +165,43 @@ class PsPersonTokenEndpointHttpTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return (String) json(polled).get("person_token");
+    }
+
+    @Test
+    void bodyWithoutContentCoverageIsRejected() throws Exception {
+        // §11.3.3 (PS-101): a body must be covered by content-digest and content-type.
+        byte[] body = Json.write(Map.of("resource", RESOURCE)).getBytes(StandardCharsets.UTF_8);
+        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/person-token")
+                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .body(body)
+                .keyPair(AGENT_KEY)
+                .scheme(new SignatureScheme.Jwt(agentToken()))
+                .build());
+        MockHttpServletRequestBuilder request =
+                post("/person-token").contentType(JSON_UTF8).content(body);
+        headers.forEach(request::header);
+        mvc.perform(request)
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Signature-Error", "error=invalid_input"));
+    }
+
+    @Test
+    void bodyAlteredAfterSigningIsRejected() throws Exception {
+        byte[] signedBody = Json.write(Map.of("resource", RESOURCE)).getBytes(StandardCharsets.UTF_8);
+        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/person-token")
+                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .body(signedBody)
+                .keyPair(AGENT_KEY)
+                .scheme(new SignatureScheme.Jwt(agentToken()))
+                .additionalComponents(BODY_COMPONENTS)
+                .build());
+        byte[] tampered = Json.write(Map.of("resource", "https://evil.example")).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequestBuilder request =
+                post("/person-token").contentType(JSON_UTF8).content(tampered);
+        headers.forEach(request::header);
+        mvc.perform(request)
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Signature-Error", "error=invalid_signature"));
     }
 
     @Test

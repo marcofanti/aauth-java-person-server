@@ -46,6 +46,7 @@ public class PsPersonTokenController {
             HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
+        BodyCoverage.require(signed);
         PersonTokenService.Outcome outcome = service.request(agent, parse(raw));
         return switch (outcome) {
             case PersonTokenService.Outcome.Issued issued -> {

@@ -39,6 +39,9 @@ import org.springframework.test.web.servlet.MvcResult;
 class PsAuthTokenDraft11HttpTest {
 
     private static final String PS_ORIGIN = "http://localhost";
+    private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
+    // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
+    private static final String JSON_UTF8 = "application/json;charset=UTF-8";
     private static final String RESOURCE_ISS = "https://rs.example";
     private static final String AGENT_ID = "aauth:planner.7f3c@agent-server.example";
 
@@ -149,12 +152,13 @@ class PsAuthTokenDraft11HttpTest {
     private MvcResult postAuthToken(Map<String, Object> params, String agentToken) throws Exception {
         byte[] body = Json.write(params).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/auth-token")
-                .headers(Map.of("Host", "localhost", "Content-Type", "application/json"))
+                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken))
+                .additionalComponents(BODY_COMPONENTS)
                 .build());
-        var request = post("/auth-token").contentType("application/json").content(body);
+        var request = post("/auth-token").contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }

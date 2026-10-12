@@ -52,7 +52,9 @@ public class PsMissionController {
 
     @PostMapping("/agent-missions")
     public ResponseEntity<Object> propose(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
-        PsAuth.TokenAgentContext agent = auth.requireTokenAgent(RequestExtract.signedRequest(request, raw));
+        SignedRequest signed = RequestExtract.signedRequest(request, raw);
+        PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
+        BodyCoverage.require(signed);
         BodyReader body = parse(raw);
         Draft11Missions.Proposal proposal = new Draft11Missions.Proposal(
                 Sanitize.markdownOrNull(body.optString("description")),
@@ -66,6 +68,7 @@ public class PsMissionController {
             HttpServletRequest request, @PathVariable("s256") String s256, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         String agentId = auth.requireAgentId(signed);
+        BodyCoverage.require(signed);
         Mission mission = status.requireOwnActive(s256, agentId);
         BodyReader body = parse(raw);
         String action = body.optString("action");

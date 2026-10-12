@@ -137,11 +137,16 @@ public class PsExceptionAdvice {
                     case ErrorCodes.ERROR_INVALID_SIGNATURE -> ErrorCodes.ERROR_INVALID_SIGNATURE;
                     default -> "invalid_jwt";
                 };
+        return signatureError(new SignatureError(code, e.getMessage()));
+    }
+
+    @ExceptionHandler(SignatureError.class)
+    public ResponseEntity<Map<String, Object>> signatureError(SignatureError e) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("error", code);
+        body.put("error", e.code());
         body.put("detail", e.getMessage());
         return ResponseEntity.status(401)
-                .header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + code)
+                .header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + e.code())
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(body);
     }

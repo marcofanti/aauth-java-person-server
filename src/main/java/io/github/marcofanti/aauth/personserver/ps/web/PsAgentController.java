@@ -132,6 +132,7 @@ public class PsAgentController {
     public ResponseEntity<Object> postAuthToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
+        BodyCoverage.require(signed);
         BodyReader body;
         String presentedToken;
         try {
