@@ -87,6 +87,7 @@ public record PsSettings(
         return new PSMetadata(
                 o,
                 o + "/token",
+                o + "/auth-token",
                 o + "/mission",
                 o + "/permission",
                 o + "/audit",

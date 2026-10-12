@@ -115,7 +115,7 @@ Agent Server (person-facing):
   (pre-trust a stable key without a pending registration).
 
 Metadata (no auth): `GET /.well-known/aauth-person.json` (`issuer`,
-`token_endpoint`, `mission_endpoint`, `permission_endpoint`, `audit_endpoint`,
+`auth_token_endpoint` (+ legacy `token_endpoint`), `accept_signature_algs`, `mission_endpoint`, `permission_endpoint`, `audit_endpoint`,
 `interaction_endpoint`, `mission_control_endpoint`, `jwks_uri`),
 `GET /.well-known/aauth-agent.json` (`issuer`, `jwks_uri`, `client_name`,
 `registration_endpoint`, `refresh_endpoint`), `GET /.well-known/jwks.json` (merged).

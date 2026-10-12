@@ -2,6 +2,7 @@ package io.github.marcofanti.aauth.personserver.ps.web;
 
 import io.github.marcofanti.aauth.personserver.model.PSMetadata;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import org.springframework.context.annotation.Profile;
@@ -32,6 +33,8 @@ public class PsWellKnownController {
         PSMetadata meta = settings.metadata();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("issuer", meta.issuer());
+        out.put("auth_token_endpoint", meta.authTokenEndpoint());
+        // Draft-10 name for the same endpoint, kept for dual-stack clients (compat10).
         out.put("token_endpoint", meta.tokenEndpoint());
         out.put("mission_endpoint", meta.missionEndpoint());
         out.put("permission_endpoint", meta.permissionEndpoint());
@@ -39,6 +42,7 @@ public class PsWellKnownController {
         out.put("interaction_endpoint", meta.interactionEndpoint());
         out.put("mission_control_endpoint", meta.missionControlEndpoint());
         out.put("jwks_uri", meta.jwksUri());
+        out.put("accept_signature_algs", List.of("Ed25519"));
         return out;
     }
 

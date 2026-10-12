@@ -91,7 +91,7 @@ public class PsAgentController {
         };
     }
 
-    @PostMapping("/token")
+    @PostMapping({"/token", "/auth-token"})
     public ResponseEntity<Object> postToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);

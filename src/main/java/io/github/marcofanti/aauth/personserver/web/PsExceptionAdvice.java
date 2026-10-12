@@ -31,6 +31,7 @@ public class PsExceptionAdvice {
     static boolean isAgentProtocolPath(String path) {
         return path.startsWith("/mission")
                 || path.startsWith("/token")
+                || path.startsWith("/auth-token")
                 || path.startsWith("/pending")
                 || path.startsWith("/permission")
                 || path.startsWith("/audit")

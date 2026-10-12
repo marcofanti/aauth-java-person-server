@@ -50,7 +50,7 @@
         document.getElementById("metadata").replaceChildren(
           el("dl", { class: "facts" },
             el("dt", {}, "Issuer"), el("dd", { class: "mono" }, person.issuer),
-            el("dt", {}, "Token endpoint"), el("dd", { class: "mono" }, person.token_endpoint),
+            el("dt", {}, "Auth token endpoint"), el("dd", { class: "mono" }, person.auth_token_endpoint || person.token_endpoint),
             el("dt", {}, "Mission endpoint"), el("dd", { class: "mono" }, person.mission_endpoint),
             el("dt", {}, "JWKS"), el("dd", { class: "mono" }, person.jwks_uri)),
           el("details", { class: "raw" },
