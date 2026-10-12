@@ -53,6 +53,7 @@ public class PsConfiguration {
                 .insecureDev(settings.insecureDev())
                 .selfJwksProvider(selfJwksProvider)
                 .missionEvaluator(settings.missionEvaluator())
+                .missionLifetimeSeconds(settings.missionLifetimeSeconds())
                 .build();
     }
 

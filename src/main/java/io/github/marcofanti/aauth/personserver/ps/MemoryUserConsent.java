@@ -246,6 +246,7 @@ public final class MemoryUserConsent implements UserConsent {
             Mission found = mission.getMission(record.missionS256);
             if (found != null && found.state() == MissionState.ACTIVE) {
                 mission.setMission(found.withState(MissionState.TERMINATED));
+                new Draft11MissionStatus(mission).recordReason(found, "completed");
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("event", "mission_completed");
                 payload.put("summary", record.interactionSummary);
@@ -279,7 +280,7 @@ public final class MemoryUserConsent implements UserConsent {
                         tokenRequest.mission(),
                         tokenRequest.justification(),
                         "user_consent",
-                        Draft11Checks.maxExp(tokenRequest)));
+                        Draft11Checks.maxExp(tokenRequest, mission)));
             } else {
                 log.warn(
                         "consent: falling back to fake auth token (aud={} ps={} has_cnf={})",

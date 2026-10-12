@@ -146,6 +146,17 @@ final class Draft11Checks {
         return presentedExp == null ? agentExp : Math.min(agentExp, presentedExp);
     }
 
+    /** {@link #maxExp(TokenRequest)}, further capped at the mission's {@code expires_at} (§9.4.1). */
+    static Long maxExp(TokenRequest request, MissionStatePort missions) {
+        Long cap = maxExp(request);
+        if (cap == null || request.mission() == null) {
+            return cap;
+        }
+        Long missionCap = Draft11MissionStatus.capFor(
+                missions.getMission(request.mission().s256()));
+        return missionCap == null ? cap : Math.min(cap, missionCap);
+    }
+
     private static ProblemError tokenProblem(TokenException e, String invalidCode, String expiredCode) {
         String message = String.valueOf(e.getMessage());
         boolean expired = message.toLowerCase(Locale.ROOT).contains("expired");

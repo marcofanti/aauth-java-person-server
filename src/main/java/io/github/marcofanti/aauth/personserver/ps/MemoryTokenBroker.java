@@ -7,7 +7,6 @@ import io.github.marcofanti.aauth.personserver.model.Mission;
 import io.github.marcofanti.aauth.personserver.model.MissionLogEntry;
 import io.github.marcofanti.aauth.personserver.model.MissionLogKind;
 import io.github.marcofanti.aauth.personserver.model.MissionRef;
-import io.github.marcofanti.aauth.personserver.model.MissionState;
 import io.github.marcofanti.aauth.personserver.model.PendingPollOutcome;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
@@ -106,7 +105,7 @@ public final class MemoryTokenBroker implements TokenBroker {
                 request.mission(),
                 request.justification(),
                 "autonomous",
-                Draft11Checks.maxExp(request)));
+                Draft11Checks.maxExp(request, mission)));
     }
 
     @Override
@@ -143,9 +142,7 @@ public final class MemoryTokenBroker implements TokenBroker {
             if (found == null) {
                 throw new ProblemError(400, "invalid_resource_token", "mission_s256 names no known mission");
             }
-            if (found.state() != MissionState.ACTIVE) {
-                throw new MissionTerminatedException();
-            }
+            new Draft11MissionStatus(mission).requireActive(found);
             bound = request.withMission(new MissionRef(psOrigin, missionS256));
         }
         return decide(bound, resourceClaims);

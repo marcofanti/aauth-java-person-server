@@ -30,7 +30,8 @@ public final class PsWiring {
             boolean insecureDev,
             Supplier<Map<String, Object>> selfJwksProvider,
             Function<String, Map<String, Object>> resourceJwks,
-            String missionEvaluator) {
+            String missionEvaluator,
+            Long missionLifetimeSeconds) {
 
         public static Builder builder(String publicOrigin) {
             return new Builder(publicOrigin);
@@ -51,6 +52,7 @@ public final class PsWiring {
             private Supplier<Map<String, Object>> selfJwksProvider;
             private Function<String, Map<String, Object>> resourceJwks;
             private String missionEvaluator;
+            private Long missionLifetimeSeconds;
 
             private Builder(String publicOrigin) {
                 this.publicOrigin = publicOrigin;
@@ -121,6 +123,11 @@ public final class PsWiring {
                 return this;
             }
 
+            public Builder missionLifetimeSeconds(Long value) {
+                this.missionLifetimeSeconds = value;
+                return this;
+            }
+
             public Options build() {
                 return new Options(
                         publicOrigin,
@@ -136,7 +143,8 @@ public final class PsWiring {
                         insecureDev,
                         selfJwksProvider,
                         resourceJwks,
-                        missionEvaluator);
+                        missionEvaluator,
+                        missionLifetimeSeconds);
             }
         }
     }

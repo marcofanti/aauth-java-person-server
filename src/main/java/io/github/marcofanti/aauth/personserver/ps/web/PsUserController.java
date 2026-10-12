@@ -1,6 +1,7 @@
 package io.github.marcofanti.aauth.personserver.ps.web;
 
 import io.github.marcofanti.aauth.personserver.model.Mission;
+import io.github.marcofanti.aauth.personserver.ps.Draft11MissionStatus;
 import io.github.marcofanti.aauth.personserver.ps.ForbiddenOwnerException;
 import io.github.marcofanti.aauth.personserver.ps.MemoryPendingStore;
 import io.github.marcofanti.aauth.personserver.ps.PendingRecord;
@@ -71,6 +72,7 @@ public class PsUserController {
         Mission mission;
         try {
             mission = ps.missionControl().terminateMission(s256);
+            new Draft11MissionStatus(ps.mission()).recordReason(mission, "revoked");
         } catch (IllegalArgumentException e) {
             throw new HttpError(400, e.getMessage());
         }

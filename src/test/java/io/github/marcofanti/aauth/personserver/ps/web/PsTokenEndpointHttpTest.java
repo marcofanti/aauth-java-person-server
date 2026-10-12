@@ -80,6 +80,7 @@ class PsTokenEndpointHttpTest {
                     3600,
                     null,
                     null,
+                    null,
                     null);
         }
 

@@ -4,7 +4,6 @@ import io.github.marcofanti.aauth.Identifiers;
 import io.github.marcofanti.aauth.TokenException;
 import io.github.marcofanti.aauth.personserver.model.DeferredResponse;
 import io.github.marcofanti.aauth.personserver.model.Mission;
-import io.github.marcofanti.aauth.personserver.model.MissionState;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.web.PsAuth.TokenAgentContext;
@@ -86,7 +85,7 @@ public final class PersonTokenService {
                 resource,
                 params.missionS256(),
                 params.tenant(),
-                holder.maxExp(),
+                earliest(holder.maxExp(), Draft11MissionStatus.capFor(mission)),
                 string(metadata, "name"),
                 string(metadata, "description"),
                 string(metadata, "access_mode"),
@@ -129,14 +128,7 @@ public final class PersonTokenService {
         if (missionS256 == null) {
             return null;
         }
-        Mission mission = deps.missions().getMission(missionS256);
-        if (mission == null || !Objects.equals(mission.agentId(), agentId)) {
-            throw new ProblemError(400, "invalid_request", "mission_s256 does not name a mission of this agent");
-        }
-        if (mission.state() != MissionState.ACTIVE) {
-            throw new MissionTerminatedException();
-        }
-        return mission;
+        return new Draft11MissionStatus(deps.missions()).requireActiveParameter(missionS256, agentId);
     }
 
     /** Who the token is for: the signing agent, or the sub-agent its subagent_token names (§10.2). */

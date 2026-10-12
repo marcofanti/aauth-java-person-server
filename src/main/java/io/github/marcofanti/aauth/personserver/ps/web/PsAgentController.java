@@ -12,6 +12,8 @@ import io.github.marcofanti.aauth.personserver.model.PermissionOutcome;
 import io.github.marcofanti.aauth.personserver.model.PermissionRequest;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.ToolSpec;
+import io.github.marcofanti.aauth.personserver.ps.Draft11MissionStatus;
+import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsGovernance;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
@@ -46,10 +48,27 @@ public class PsAgentController {
 
     private final PsContainer ps;
     private final PsAuth auth;
+    private final String psOrigin;
+    private final Draft11MissionStatus missionStatus;
 
-    public PsAgentController(PsContainer ps, PsAuth auth) {
+    public PsAgentController(PsContainer ps, PsAuth auth, PsSettings settings) {
         this.ps = ps;
         this.auth = auth;
+        this.psOrigin = MissionUtils.stripTrailingSlash(settings.origin());
+        this.missionStatus = new Draft11MissionStatus(ps.mission());
+    }
+
+    /**
+     * Draft-11 names a mission by {@code mission_s256} (§8.2.1, checked for ownership, expiry and
+     * termination); draft-10 by the {@code {approver, s256}} object.
+     */
+    private MissionRef missionParameter(BodyReader body, String agentId) {
+        String s256 = body.optString("mission_s256");
+        if (s256 != null) {
+            missionStatus.requireActiveParameter(s256, agentId);
+            return new MissionRef(psOrigin, s256);
+        }
+        return missionRef(body.optMap("mission"));
     }
 
     static MissionRef missionRef(Map<String, Object> mission) {
@@ -153,7 +172,7 @@ public class PsAgentController {
                 body.requireString("action"),
                 Sanitize.markdownOrNull(body.optString("description")),
                 body.optMap("parameters"),
-                missionRef(body.optMap("mission")),
+                missionParameter(body, agentId),
                 agentId);
         PsGovernance.PermissionResponse outcome = ps.governance().postPermission(permission);
         return switch (outcome) {
@@ -175,12 +194,11 @@ public class PsAgentController {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         String agentId = auth.requireAgentId(signed);
         BodyReader body = BodyReader.parse(raw);
-        Map<String, Object> missionMap = body.optMap("mission");
-        if (missionMap == null) {
-            throw new BodyValidationException("field 'mission' required");
+        if (body.optString("mission_s256") == null && body.optMap("mission") == null) {
+            throw new BodyValidationException("field 'mission_s256' (or draft-10 'mission') required");
         }
         AuditRequest audit = new AuditRequest(
-                missionRef(missionMap),
+                missionParameter(body, agentId),
                 body.requireString("action"),
                 Sanitize.markdownOrNull(body.optString("description")),
                 body.optMap("parameters"),
@@ -200,6 +218,10 @@ public class PsAgentController {
         if (!INTERACTION_TYPES.contains(type)) {
             throw new BodyValidationException("type must be one of interaction, payment, question, completion");
         }
+        if ("completion".equals(type) && body.optString("mission_s256") != null) {
+            throw new ProblemError(
+                    400, "invalid_request", "draft-11 completion is POST {mission_endpoint}/{mission_s256} (§8.5)");
+        }
         AgentInteractionRequest interaction = new AgentInteractionRequest(
                 type,
                 Sanitize.markdownOrNull(body.optString("description")),
@@ -207,7 +229,7 @@ public class PsAgentController {
                 body.optString("code"),
                 Sanitize.markdownOrNull(body.optString("question")),
                 Sanitize.markdownOrNull(body.optString("summary")),
-                missionRef(body.optMap("mission")),
+                missionParameter(body, agentId),
                 agentId);
         DeferredResponse deferred;
         try {

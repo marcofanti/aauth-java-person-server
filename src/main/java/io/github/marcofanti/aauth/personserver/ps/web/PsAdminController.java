@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps.web;
 import io.github.marcofanti.aauth.personserver.model.Mission;
 import io.github.marcofanti.aauth.personserver.model.MissionLogEntry;
 import io.github.marcofanti.aauth.personserver.model.MissionState;
+import io.github.marcofanti.aauth.personserver.ps.Draft11MissionStatus;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.TrustedAgentServer;
 import io.github.marcofanti.aauth.personserver.web.BodyReader;
@@ -94,6 +95,7 @@ public class PsAdminController {
         Mission mission;
         try {
             mission = ps.missionControl().terminateMission(s256);
+            new Draft11MissionStatus(ps.mission()).recordReason(mission, "administrative");
         } catch (IllegalArgumentException e) {
             throw new HttpError(400, e.getMessage());
         }

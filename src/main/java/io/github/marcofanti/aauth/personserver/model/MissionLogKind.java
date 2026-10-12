@@ -7,7 +7,9 @@ public enum MissionLogKind {
     PERMISSION("permission"),
     AUDIT("audit"),
     AGENT_INTERACTION("agent_interaction"),
-    CLARIFICATION("clarification");
+    CLARIFICATION("clarification"),
+    MISSION_UPDATE("mission_update"),
+    MISSION_TERMINATED("mission_terminated");
 
     private final String value;
 

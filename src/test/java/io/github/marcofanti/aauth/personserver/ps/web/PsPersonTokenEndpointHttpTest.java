@@ -74,6 +74,7 @@ class PsPersonTokenEndpointHttpTest {
                     3600,
                     null,
                     null,
+                    null,
                     null);
         }
 

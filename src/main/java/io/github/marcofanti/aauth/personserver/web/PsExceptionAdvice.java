@@ -34,6 +34,7 @@ public class PsExceptionAdvice {
                 || path.startsWith("/token")
                 || path.startsWith("/auth-token")
                 || path.startsWith("/person-token")
+                || path.startsWith("/agent-missions")
                 || path.startsWith("/pending")
                 || path.startsWith("/permission")
                 || path.startsWith("/audit")
@@ -50,6 +51,9 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "mission_terminated");
         body.put("mission_status", "terminated");
+        if (e.reason() != null) {
+            body.put("termination_reason", e.reason());
+        }
         return ResponseEntity.status(403).body(body);
     }
 
@@ -116,7 +120,7 @@ public class PsExceptionAdvice {
     }
 
     static boolean isDraft11Path(String path) {
-        return path.startsWith("/auth-token") || path.startsWith("/person-token");
+        return path.startsWith("/auth-token") || path.startsWith("/person-token") || path.startsWith("/agent-missions");
     }
 
     @ExceptionHandler(AgentTokenRejectException.class)

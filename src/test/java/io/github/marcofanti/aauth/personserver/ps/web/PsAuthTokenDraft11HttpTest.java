@@ -71,6 +71,7 @@ class PsAuthTokenDraft11HttpTest {
                     3600,
                     null,
                     null,
+                    null,
                     null);
         }
 

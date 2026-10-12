@@ -55,7 +55,8 @@ class PsApiSmokeHttpTest {
                     3600,
                     null,
                     null,
-                    "keyword");
+                    "keyword",
+                    null);
         }
 
         @Bean

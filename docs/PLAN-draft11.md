@@ -102,7 +102,11 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-40 consent attribution | done | consent page: "This request" / "From the resource" / "Stated by the agent" |
 | Agent-token failures on -11 endpoints | done | 401 + `Signature-Error` (`invalid_signature`, `expired_jwt`, `invalid_jwt`) |
 | PS-32 revocation checks | pending | Phase 5 (needs revocation records) |
-| PS-03, 04, 50..115 (rest) | pending | Phases 4–7 |
+| PS-04 mission_endpoint | done | `/agent-missions` (+ `/agent-missions/{s256}`); draft-10 agents keep hardcoded `/mission` |
+| PS-80..90 missions | done | `Draft11Missions` (create/update), `Draft11MissionStatus` (active, expiry, reasons in the log) |
+| PS-95 interaction types | done | `completion` refused on `/interaction` for `mission_s256` requests |
+| PS-96 out-of-band completion | n/a | the PS completes interactions only via its consent page |
+| PS-03, 50..115 (rest) | pending | Phases 5–7 |
 
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
@@ -120,3 +124,12 @@ cross-check by calling the draft-10 endpoint. Regression test:
 
 Library gap: `AuthTokens.Spec` has no `tenant`, so PS-34's "copy `tenant`" into the auth token is
 not possible yet (the PS still enforces tenant equality between resource and presented tokens).
+
+Mission dual-stack (2026-10-12): both drafts read the same `mission_endpoint` key, so the draft-11
+endpoint lives at a new path (`/agent-missions`). Every draft-10 client (Python scripts, the demo's
+`MissionClient`) hardcodes `POST /mission`, and no client discovers `mission_endpoint` from
+metadata, so advertising the new path is safe. A mission is draft-11 when its blob has no
+`approver`; termination reasons are logged only for draft-11 missions, keeping draft-10 logs
+identical to the reference. Known gap: draft-11 mission creation approves immediately (§8.1
+deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
+`AAUTH_PS_MISSION_LIFETIME_SECONDS` sets `expires_at` (unset = no expiry).
