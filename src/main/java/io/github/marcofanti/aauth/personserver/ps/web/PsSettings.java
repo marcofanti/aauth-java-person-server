@@ -88,6 +88,7 @@ public record PsSettings(
                 o,
                 o + "/token",
                 o + "/auth-token",
+                o + "/person-token",
                 o + "/mission",
                 o + "/permission",
                 o + "/audit",

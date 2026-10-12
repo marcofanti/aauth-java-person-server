@@ -97,6 +97,7 @@ class PsApiSmokeHttpTest {
                 .andExpect(jsonPath("$.issuer").value(ORIGIN))
                 .andExpect(jsonPath("$.token_endpoint").value(ORIGIN + "/token"))
                 .andExpect(jsonPath("$.auth_token_endpoint").value(ORIGIN + "/auth-token"))
+                .andExpect(jsonPath("$.person_token_endpoint").value(ORIGIN + "/person-token"))
                 .andExpect(jsonPath("$.accept_signature_algs[0]").value("Ed25519"))
                 .andExpect(jsonPath("$.jwks_uri").value(ORIGIN + "/.well-known/jwks.json"));
         mvc.perform(get("/.well-known/jwks.json"))

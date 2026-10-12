@@ -86,3 +86,25 @@ Each phase: tests first, `mvn verify` green, one PR into the `draft11` branch.
 
 All PS-xx items checked; `mvn verify` green; draft-10 Python walkthroughs still pass; -11 demo
 flows pass; `compat10` is the only place -10 shapes are handled.
+
+## Status
+
+| Item | State | Notes |
+|---|---|---|
+| Build on library SNAPSHOT, dual-stack tokens | done | `compat10.Draft10Tokens`, `ResourceTokenVerifier` |
+| PS-01 `auth_token_endpoint` | done | `/auth-token`; legacy `token_endpoint` → `/token` |
+| PS-02 `person_token_endpoint` | done | `/person-token` |
+| PS-05 `accept_signature_algs` | done | `["Ed25519"]` |
+| PS-10..13 person token endpoint | done | first-use consent (`person_token` pending kind), `user_unreachable`, ledger, per-agent cap 100 |
+| PS-20 directed `sub` | done | HMAC-SHA256(person, resource); secret beside the PS signing key |
+| PS-70/71 sub-agent person tokens | done | `invalid_subagent_token`, `expired_subagent_token` |
+| PS-03, 04, 30..115 (rest) | pending | Phases 3–7 |
+
+Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
+`auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
+`/auth-token` enforces draft-11 rules (PS-30 `presented_token` REQUIRED, problem+json errors).
+
+Library findings to raise on its `draft11` branch: `PersonTokens.Spec` accepts `scope`,
+`account`, and `capabilities`, but §7.1.2 says a person token MUST NOT contain `scope` or
+`account` (the PS always passes `null`); `ErrorCodes` lacks the draft-11 token-endpoint codes
+(held in `ProblemError` until it has them).

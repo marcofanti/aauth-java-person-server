@@ -34,6 +34,7 @@ public class PsWellKnownController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("issuer", meta.issuer());
         out.put("auth_token_endpoint", meta.authTokenEndpoint());
+        out.put("person_token_endpoint", meta.personTokenEndpoint());
         // Draft-10 name for the same endpoint, kept for dual-stack clients (compat10).
         out.put("token_endpoint", meta.tokenEndpoint());
         out.put("mission_endpoint", meta.missionEndpoint());

@@ -1,11 +1,19 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /** Builds the in-memory Person Server container ({@code build_memory_ps} in Python). */
 public final class PsWiring {
+
+    /** Directed-subject secret beside the PS signing key; in-memory when no key path is set. */
+    public static DirectedSubjects directedSubjects(String signingKeyPath) {
+        return signingKeyPath == null || signingKeyPath.isEmpty()
+                ? DirectedSubjects.ephemeral()
+                : DirectedSubjects.persistent(Path.of(signingKeyPath + ".subjects"));
+    }
 
     /** Wiring options; defaults mirror the Python keyword arguments. */
     public record Options(
@@ -182,8 +190,18 @@ public final class PsWiring {
                 options.agentJwtStub(),
                 options.autoApproveToken(),
                 buildEvaluator(options.missionEvaluator()));
+        PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
+        PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
+                origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(
-                backend, store, federator, authIssuer, options.agentJwtStub(), origin, resourceResolver);
+                backend,
+                store,
+                federator,
+                authIssuer,
+                options.agentJwtStub(),
+                origin,
+                resourceResolver,
+                personTokenIssuer);
         MemoryMissionControl control = new MemoryMissionControl(backend);
         return new PsContainer(
                 backend,
@@ -200,6 +218,8 @@ public final class PsWiring {
                 resourceResolver,
                 authIssuer,
                 issuedStore,
-                consentScopes);
+                consentScopes,
+                personTokenIssuer,
+                personTokenLedger);
     }
 }

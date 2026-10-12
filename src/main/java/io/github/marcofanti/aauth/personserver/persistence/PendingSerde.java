@@ -10,6 +10,7 @@ import io.github.marcofanti.aauth.personserver.model.MissionRef;
 import io.github.marcofanti.aauth.personserver.model.MissionState;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.ToolSpec;
@@ -121,7 +122,43 @@ public final class PendingSerde {
         out.put("verified_resource_claims", record.verifiedResourceClaims);
         out.put("token_agent_cnf_jwk", record.tokenAgentCnfJwk);
         out.put("evaluator_reason", record.evaluatorReason);
+        out.put("person_token_request", personTokenRequestToDict(record.personTokenRequest));
         return out;
+    }
+
+    static Map<String, Object> personTokenRequestToDict(PersonTokenRequest request) {
+        if (request == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("agent_id", request.agentId());
+        out.put("cnf_jwk", request.cnfJwk());
+        out.put("resource", request.resource());
+        out.put("mission_s256", request.missionS256());
+        out.put("tenant", request.tenant());
+        out.put("max_exp", request.maxExp());
+        out.put("resource_name", request.resourceName());
+        out.put("resource_description", request.resourceDescription());
+        out.put("resource_access_mode", request.resourceAccessMode());
+        out.put("justification", request.justification());
+        return out;
+    }
+
+    static PersonTokenRequest personTokenRequestFromDict(Map<String, Object> data) {
+        if (data == null) {
+            return null;
+        }
+        return new PersonTokenRequest(
+                stringOrNull(data.get("agent_id")),
+                mapOrNull(data.get("cnf_jwk")),
+                stringOrNull(data.get("resource")),
+                stringOrNull(data.get("mission_s256")),
+                stringOrNull(data.get("tenant")),
+                data.get("max_exp") instanceof Number n ? n.longValue() : null,
+                stringOrNull(data.get("resource_name")),
+                stringOrNull(data.get("resource_description")),
+                stringOrNull(data.get("resource_access_mode")),
+                stringOrNull(data.get("justification")));
     }
 
     @SuppressWarnings("unchecked")
@@ -174,6 +211,7 @@ public final class PendingSerde {
         record.verifiedResourceClaims = mapOrNull(data.get("verified_resource_claims"));
         record.tokenAgentCnfJwk = mapOrNull(data.get("token_agent_cnf_jwk"));
         record.evaluatorReason = stringOrNull(data.get("evaluator_reason"));
+        record.personTokenRequest = personTokenRequestFromDict(mapOrNull(data.get("person_token_request")));
         return record;
     }
 

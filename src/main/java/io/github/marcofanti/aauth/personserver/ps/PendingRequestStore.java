@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.util.List;
@@ -67,6 +68,12 @@ public interface PendingRequestStore {
 
     /** Deferred user step for {@code POST /permission} outside approved_tools (Layer 2). */
     String createPermissionPending(PermissionPendingSpec spec);
+
+    /**
+     * Deferred first-use approval for a draft-11 person token request (§7.1); opens with
+     * {@code requirement=interaction}.
+     */
+    String createPersonTokenPending(PersonTokenRequest request, String ownerId);
 
     /**
      * Return current deferred snapshot or terminal success (token or mission).

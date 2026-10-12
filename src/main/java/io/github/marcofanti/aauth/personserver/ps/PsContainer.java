@@ -19,4 +19,6 @@ public record PsContainer(
         Function<String, Map<String, Object>> resourceJwksResolver,
         AuthTokenIssuer authIssuer,
         IssuedTokenStore issuedTokenStore,
-        ConsentScopeStore consentScopes) {}
+        ConsentScopeStore consentScopes,
+        PersonTokenIssuer personTokenIssuer,
+        PersonTokenLedger personTokenLedger) {}

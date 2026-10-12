@@ -4,6 +4,7 @@ public record PSMetadata(
         String issuer,
         String tokenEndpoint,
         String authTokenEndpoint,
+        String personTokenEndpoint,
         String missionEndpoint,
         String permissionEndpoint,
         String auditEndpoint,

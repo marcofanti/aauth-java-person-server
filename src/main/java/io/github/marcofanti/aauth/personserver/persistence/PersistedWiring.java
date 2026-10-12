@@ -12,6 +12,8 @@ import io.github.marcofanti.aauth.personserver.ps.MemoryMissionLifecycle;
 import io.github.marcofanti.aauth.personserver.ps.MemoryTokenBroker;
 import io.github.marcofanti.aauth.personserver.ps.MemoryUserConsent;
 import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
+import io.github.marcofanti.aauth.personserver.ps.PersonTokenIssuer;
+import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsSigningService;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
@@ -58,8 +60,18 @@ public final class PersistedWiring {
                 options.agentJwtStub(),
                 options.autoApproveToken(),
                 PsWiring.buildEvaluator(options.missionEvaluator()));
+        PersonTokenLedger personTokenLedger = new SqlPersonTokenLedger(dataSource);
+        PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
+                origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(
-                mission, store, federator, authIssuer, options.agentJwtStub(), origin, resourceResolver);
+                mission,
+                store,
+                federator,
+                authIssuer,
+                options.agentJwtStub(),
+                origin,
+                resourceResolver,
+                personTokenIssuer);
         return new PsContainer(
                 mission,
                 store,
@@ -75,7 +87,9 @@ public final class PersistedWiring {
                 resourceResolver,
                 authIssuer,
                 issuedStore,
-                consentScopes);
+                consentScopes,
+                personTokenIssuer,
+                personTokenLedger);
     }
 
     public static AsContainer buildPersistedAs(DataSource dataSource, AsContainer.MemoryOptions options) {

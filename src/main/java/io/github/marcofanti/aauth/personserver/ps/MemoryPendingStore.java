@@ -5,6 +5,7 @@ import io.github.marcofanti.aauth.personserver.model.Mission;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.security.SecureRandom;
@@ -126,6 +127,18 @@ public final class MemoryPendingStore implements PendingRequestStore {
         record.permissionAction = spec.action();
         record.permissionDescription = spec.description();
         record.permissionParameters = spec.parameters();
+        return register(record).pendingId;
+    }
+
+    @Override
+    public String createPersonTokenPending(PersonTokenRequest request, String ownerId) {
+        PendingRecord record = new PendingRecord(
+                newPendingId(), newInteractionCode(), "person_token", Instant.now(), defaultTtlSeconds);
+        record.ownerId = ownerId;
+        record.pendingAgentId = request.agentId();
+        record.missionS256 = request.missionS256();
+        record.personTokenRequest = request;
+        record.requirement = RequirementLevel.INTERACTION;
         return register(record).pendingId;
     }
 

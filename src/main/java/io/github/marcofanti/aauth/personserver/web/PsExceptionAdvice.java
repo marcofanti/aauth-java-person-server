@@ -32,6 +32,7 @@ public class PsExceptionAdvice {
         return path.startsWith("/mission")
                 || path.startsWith("/token")
                 || path.startsWith("/auth-token")
+                || path.startsWith("/person-token")
                 || path.startsWith("/pending")
                 || path.startsWith("/permission")
                 || path.startsWith("/audit")
@@ -126,6 +127,18 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("detail", e.getMessage());
         return ResponseEntity.status(422).body(body);
+    }
+
+    @ExceptionHandler(ProblemError.class)
+    public ResponseEntity<Map<String, Object>> problem(ProblemError e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", e.error());
+        if (e.detail() != null) {
+            body.put("detail", e.detail());
+        }
+        return ResponseEntity.status(e.status())
+                .contentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON)
+                .body(body);
     }
 
     @ExceptionHandler(UnsupportedSchemeError.class)

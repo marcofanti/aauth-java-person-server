@@ -7,6 +7,7 @@ import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
 import io.github.marcofanti.aauth.personserver.web.UnsupportedSchemeError;
 import io.github.marcofanti.aauth.signing.HttpSignatureException;
+import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.SignatureKeyHeader;
 import java.util.Locale;
 import java.util.Map;
@@ -16,7 +17,12 @@ public final class PsAuth {
 
     /** Context for {@code POST /token}: scheme=jwt when secure; HWK / stub headers in insecure dev. */
     public record TokenAgentContext(
-            String agentId, String agentJkt, Map<String, Object> agentCnfJwk, boolean secureMode) {}
+            String agentId,
+            String agentJkt,
+            Map<String, Object> agentCnfJwk,
+            boolean secureMode,
+            String agentIss,
+            Long agentTokenExp) {}
 
     private final PsSettings settings;
     private final PsContainer ps;
@@ -80,7 +86,7 @@ public final class PsAuth {
         if (settings.insecureDev()) {
             String stubId = request.header("x-aauth-agent-id");
             if (stubId != null && !stubId.isEmpty()) {
-                return new TokenAgentContext(stubId, null, null, false);
+                return new TokenAgentContext(stubId, null, null, false, null, null);
             }
             if (request.hasSignatureHeaders()) {
                 if (!HttpSigAuth.verifySignature(request)) {
@@ -90,7 +96,7 @@ public final class PsAuth {
                 if (!"hwk".equals(parsed.scheme())) {
                     throw new HttpError(401, "Insecure dev token request: use scheme=hwk or X-AAuth-Agent-Id");
                 }
-                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false);
+                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false, null, null);
             }
             throw new HttpError(401, "Insecure dev: send X-AAuth-Agent-Id or an HWK-signed request for POST /token");
         }
@@ -128,7 +134,14 @@ public final class PsAuth {
             }
             throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_AGENT_TOKEN);
         }
-        return new TokenAgentContext(verified.agentId(), verified.agentJkt(), verified.agentCnfJwk(), true);
+        Long agentTokenExp = Jwts.parse(verified.agentTokenJwt()).numericClaim("exp");
+        return new TokenAgentContext(
+                verified.agentId(),
+                verified.agentJkt(),
+                verified.agentCnfJwk(),
+                true,
+                verified.agentIss(),
+                agentTokenExp);
     }
 
     private static SignatureKeyHeader.Parsed parseSignatureKey(String headerValue) {

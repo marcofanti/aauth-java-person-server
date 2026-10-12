@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.time.Instant;
@@ -55,6 +56,7 @@ public final class PendingRecord {
     public volatile Map<String, Object> verifiedResourceClaims;
     public volatile Map<String, Object> tokenAgentCnfJwk;
     public volatile String evaluatorReason;
+    public volatile PersonTokenRequest personTokenRequest;
 
     public PendingRecord(String pendingId, String interactionCode, String kind, Instant createdAt, int ttlSeconds) {
         this.pendingId = pendingId;

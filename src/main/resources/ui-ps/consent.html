@@ -72,6 +72,8 @@
       }
       add("Justification", context.justification);
       add("Resource", context.resource_name);
+      add("Resource description", context.resource_description);
+      add("Access mode", context.resource_access_mode && el("span", { class: "mono" }, context.resource_access_mode));
       add("Resource issuer", context.resource_iss && el("span", { class: "mono" }, context.resource_iss));
       add("Resource scope", context.resource_scope && el("span", { class: "mono" }, context.resource_scope));
       add("Action", context.permission_action);
