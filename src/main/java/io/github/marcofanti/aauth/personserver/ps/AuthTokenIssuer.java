@@ -1,5 +1,6 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import io.github.marcofanti.aauth.personserver.compat10.Draft10Tokens;
 import io.github.marcofanti.aauth.personserver.model.AuthTokenResponse;
 import io.github.marcofanti.aauth.personserver.model.MissionRef;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
@@ -64,21 +65,25 @@ public final class AuthTokenIssuer {
             missionObj = copy;
         }
 
-        // Draft-10 §12.3: the PS copies the resource token's account claim into the auth token.
-        String account = resourceClaims.get("account") instanceof String value ? value : null;
+        // The PS copies the resource token's account claim into the auth token (§12.3).
+        String account = stringClaim(resourceClaims, "account");
 
         long exp = Instant.now().getEpochSecond() + lifetimeSeconds;
-        String token = AuthTokens.create(AuthTokens.Spec.builder(iss, resourceIss, spec.agentId())
-                .cnfJwk(spec.agentCnfJwk())
-                .signingKey(signing.keyPair().getPrivate(), signing.kid())
-                .act(Map.of("sub", spec.agentId()))
-                .scope(scope)
-                .sub(userSub)
-                .exp(exp)
-                .mission(missionObj)
-                .dwk("aauth-person.json")
-                .account(account)
-                .build());
+        String token = ResourceTokenVerifier.isDraft11(resourceClaims)
+                ? issueDraft11(spec, resourceClaims, resourceIss, scope, account, exp)
+                : Draft10Tokens.createAuthToken(
+                        new Draft10Tokens.AuthTokenSpec(
+                                iss,
+                                resourceIss,
+                                spec.agentId(),
+                                spec.agentCnfJwk(),
+                                userSub,
+                                scope,
+                                exp,
+                                missionObj,
+                                account),
+                        signing.keyPair().getPrivate(),
+                        signing.kid());
 
         if (store != null) {
             try {
@@ -97,5 +102,35 @@ public final class AuthTokenIssuer {
         }
 
         return new AuthTokenResponse(token, lifetimeSeconds);
+    }
+
+    /**
+     * Draft-11 auth token (§9.4.1): {@code ps} is this PS, {@code sub} is the resource token's
+     * directed identifier, mission rides as {@code mission_s256}; no {@code agent}/{@code act}.
+     */
+    private String issueDraft11(
+            IssueSpec spec,
+            Map<String, Object> resourceClaims,
+            String resourceIss,
+            String scope,
+            String account,
+            long exp) {
+        String missionS256 = stringClaim(resourceClaims, "mission_s256");
+        if (missionS256 == null && spec.mission() != null) {
+            missionS256 = spec.mission().s256();
+        }
+        return AuthTokens.create(AuthTokens.Spec.builder(iss, resourceIss, stringClaim(resourceClaims, "sub"), iss)
+                .cnfJwk(spec.agentCnfJwk())
+                .signingKey(signing.keyPair().getPrivate(), signing.kid())
+                .scope(scope.isEmpty() ? null : scope)
+                .exp(exp)
+                .missionS256(missionS256)
+                .dwk("aauth-person.json")
+                .account(account)
+                .build());
+    }
+
+    private static String stringClaim(Map<String, Object> claims, String name) {
+        return claims.get(name) instanceof String value ? value : null;
     }
 }

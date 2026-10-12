@@ -15,7 +15,6 @@ import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -62,12 +61,8 @@ public final class MemoryUserConsent implements UserConsent {
         }
         if (resourceJwks != null) {
             try {
-                return ResourceTokens.verify(
-                        tokenRequest.resourceToken(),
-                        resourceJwks,
-                        null,
-                        tokenRequest.agentId(),
-                        tokenRequest.agentJkt());
+                return ResourceTokenVerifier.verify(
+                        tokenRequest.resourceToken(), resourceJwks, tokenRequest.agentId(), tokenRequest.agentJkt());
             } catch (TokenException e) {
                 log.info("consent: re-verify resource_token failed ({}), using stored claims if any", e.getMessage());
             }

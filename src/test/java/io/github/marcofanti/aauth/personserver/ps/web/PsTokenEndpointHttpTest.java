@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.marcofanti.aauth.personserver.Draft10ResourceTokens;
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
@@ -115,7 +116,7 @@ class PsTokenEndpointHttpTest {
     }
 
     private static String resourceJwt(String scope, String aud) {
-        return ResourceTokens.create(new ResourceTokens.Spec(
+        return Draft10ResourceTokens.create(
                 RESOURCE_ISS,
                 aud,
                 AGENT_ID,
@@ -125,7 +126,7 @@ class PsTokenEndpointHttpTest {
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
                 null,
-                null));
+                null);
     }
 
     private MockHttpServletRequestBuilder signedTokenPost(String resourceToken, String agentToken) {
@@ -140,6 +141,57 @@ class PsTokenEndpointHttpTest {
                 post("/token").contentType("application/json").content(body);
         signedHeaders.forEach(request::header);
         return request;
+    }
+
+    @Test
+    void draft11ResourceTokenGetsDraft11AuthToken() throws Exception {
+        // Draft-11 §9.4.1: ps = this PS, sub = the resource token's directed sub,
+        // mission_s256 replaces the mission object, and agent/act are gone.
+        String resourceToken = ResourceTokens.create(new ResourceTokens.Spec(
+                RESOURCE_ISS,
+                PS_ORIGIN,
+                agentJkt(),
+                "demo.scope",
+                PS_ORIGIN,
+                "directed-sub-123",
+                "presented-jti-1",
+                RS_KEY.getPrivate(),
+                "rs-kid",
+                Instant.now().getEpochSecond() + 3600,
+                "mission-hash-abc",
+                null,
+                null,
+                "acct-9"));
+        MvcResult result = mvc.perform(signedTokenPost(resourceToken, agentJwt(PS_ORIGIN)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String authToken = (String) Json.readMap(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .get("auth_token");
+
+        Map<String, Object> verified = AuthTokens.verifyToken(
+                authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
+        assertThat(verified)
+                .containsEntry("iss", PS_ORIGIN)
+                .containsEntry("ps", PS_ORIGIN)
+                .containsEntry("aud", RESOURCE_ISS)
+                .containsEntry("sub", "directed-sub-123")
+                .containsEntry("mission_s256", "mission-hash-abc")
+                .containsEntry("account", "acct-9")
+                .doesNotContainKeys("agent", "act", "mission");
+    }
+
+    @Test
+    void draft10ResourceTokenKeepsDraft10AuthTokenShape() throws Exception {
+        // Dual-stack: a draft-10 resource (no presented_jti) still gets agent/act back.
+        MvcResult result = mvc.perform(signedTokenPost(resourceJwt("demo.scope", PS_ORIGIN), agentJwt(PS_ORIGIN)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String authToken = (String) Json.readMap(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .get("auth_token");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> claims =
+                (Map<String, Object>) AuthTokens.parseTokenClaims(authToken).get("payload");
+        assertThat(claims).containsEntry("agent", AGENT_ID).containsKey("act").doesNotContainKey("ps");
     }
 
     @Test

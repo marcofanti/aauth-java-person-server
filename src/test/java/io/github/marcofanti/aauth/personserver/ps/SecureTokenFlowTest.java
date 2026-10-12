@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.marcofanti.aauth.personserver.Draft10ResourceTokens;
 import io.github.marcofanti.aauth.personserver.model.AuthTokenResponse;
 import io.github.marcofanti.aauth.personserver.model.ConsentContext;
 import io.github.marcofanti.aauth.personserver.model.DeferredResponse;
@@ -13,7 +14,6 @@ import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.security.KeyPair;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -55,8 +55,8 @@ class SecureTokenFlowTest {
     }
 
     private String resourceToken(String scope, String aud, Long exp) {
-        return ResourceTokens.create(new ResourceTokens.Spec(
-                RESOURCE_ISS, aud, AGENT_ID, agentJkt(), scope, resourceKey.getPrivate(), "rk1", exp, null, null));
+        return Draft10ResourceTokens.create(
+                RESOURCE_ISS, aud, AGENT_ID, agentJkt(), scope, resourceKey.getPrivate(), "rk1", exp, null, null);
     }
 
     @SuppressWarnings("unchecked")

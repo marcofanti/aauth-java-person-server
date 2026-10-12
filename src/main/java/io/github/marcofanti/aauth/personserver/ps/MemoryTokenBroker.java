@@ -14,7 +14,6 @@ import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -72,7 +71,7 @@ public final class MemoryTokenBroker implements TokenBroker {
 
     private Map<String, Object> verifyResourceToken(String resourceToken, String agentId, String agentJkt) {
         try {
-            return ResourceTokens.verify(resourceToken, resourceJwks, null, agentId, agentJkt);
+            return ResourceTokenVerifier.verify(resourceToken, resourceJwks, agentId, agentJkt);
         } catch (TokenException e) {
             log.info("resource token verification failed: {}", e.getMessage());
             String code = e.getMessage() != null

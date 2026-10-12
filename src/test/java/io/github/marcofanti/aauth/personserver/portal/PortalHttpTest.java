@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.marcofanti.aauth.personserver.Draft10ResourceTokens;
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.agentserver.AsContainer;
 import io.github.marcofanti.aauth.personserver.agentserver.web.AsSettings;
@@ -18,7 +19,6 @@ import io.github.marcofanti.aauth.signing.SignRequest;
 import io.github.marcofanti.aauth.signing.SignatureScheme;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -230,7 +230,7 @@ class PortalHttpTest {
 
         // 4. Use the agent token to sign a secure POST /token with a resource token aud=portal.
         String agentJkt = Jwk.thumbprint(publicJwk(ephemeralKey));
-        String resourceToken = ResourceTokens.create(new ResourceTokens.Spec(
+        String resourceToken = Draft10ResourceTokens.create(
                 RESOURCE_ISS,
                 ORIGIN,
                 agentId,
@@ -240,7 +240,7 @@ class PortalHttpTest {
                 "rs-kid",
                 Instant.now().getEpochSecond() + 3600,
                 null,
-                "acct-1234"));
+                "acct-1234");
         byte[] tokenBytes = Json.write(Map.of("resource_token", resourceToken)).getBytes(StandardCharsets.UTF_8);
         MvcResult issued = mvc.perform(
                         signed("POST", "/token", tokenBytes, ephemeralKey, new SignatureScheme.Jwt(agentToken)))
