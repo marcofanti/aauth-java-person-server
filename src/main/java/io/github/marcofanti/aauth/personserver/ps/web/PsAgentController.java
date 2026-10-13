@@ -262,20 +262,19 @@ public class PsAgentController {
         if (hasClarification == hasToken) {
             throw new BodyValidationException("Provide either clarification_response or resource_token, not both");
         }
-        DeferredResponse outcome;
         if (hasClarification) {
             String clarification = Sanitize.markdown(body.requireString("clarification_response"));
-            outcome = ps.tokenBroker().postClarificationResponse(pendingId, agentId, clarification);
-        } else {
-            String justification = Sanitize.markdownOrNull(body.optString("justification"));
-            outcome = ps.tokenBroker()
-                    .postUpdatedRequest(
-                            pendingId,
-                            agentId,
-                            body.requireString("resource_token"),
-                            justification,
-                            body.optString("presented_token"));
+            return AAuthResponses.tokenOutcomeResponse(
+                    ps.tokenBroker().postClarificationResponse(pendingId, agentId, clarification));
         }
+        String justification = Sanitize.markdownOrNull(body.optString("justification"));
+        DeferredResponse outcome = ps.tokenBroker()
+                .postUpdatedRequest(
+                        pendingId,
+                        agentId,
+                        body.requireString("resource_token"),
+                        justification,
+                        body.optString("presented_token"));
         return AAuthResponses.jsonDeferred(outcome);
     }
 

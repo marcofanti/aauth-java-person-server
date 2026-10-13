@@ -181,6 +181,10 @@ public final class MemoryUserConsent implements UserConsent {
     @Override
     public DecisionResult recordDecision(String pendingId, UserDecision decision) {
         PendingRecord record = store.getRecord(pendingId);
+        if (record.asPendingUrl != null) {
+            // The person already approved; what remains is the access server's step.
+            throw new NotFoundException();
+        }
 
         if (decision.clarificationQuestion() != null
                 && !decision.clarificationQuestion().isEmpty()) {
@@ -287,12 +291,19 @@ public final class MemoryUserConsent implements UserConsent {
                         "user_consent",
                         Draft11Checks.maxExp(tokenRequest, mission)));
             } else if (tokenRequest.draft11() != null) {
+                AsFederator.Federation federation;
                 try {
-                    auth = federator.federateDraft11(tokenRequest, claims);
+                    federation = federator.federateDraft11(tokenRequest, claims);
                 } catch (ProblemError e) {
                     store.failPending(pendingId, e.error());
                     return new DecisionResult(record.callbackUrl);
                 }
+                if (federation instanceof AsFederator.Federation.Deferred) {
+                    // The AS has its own step for the agent or person; the agent's next polls follow it.
+                    new AsRelay(store, federator).apply(pendingId, federation);
+                    return new DecisionResult(record.callbackUrl);
+                }
+                auth = ((AsFederator.Federation.Issued) federation).token();
             } else {
                 log.warn(
                         "consent: falling back to fake auth token (aud={} ps={} has_cnf={})",

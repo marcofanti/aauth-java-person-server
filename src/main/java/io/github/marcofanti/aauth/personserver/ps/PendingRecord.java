@@ -40,6 +40,13 @@ public final class PendingRecord {
     public volatile String interactionQuestion;
     public volatile String relayUrl;
     public volatile String relayCode;
+    /**
+     * The AS pending URL a draft-11 token request waits on (§9.1.2). While set, the PS polls it
+     * when the agent polls, and {@code relayUrl} / {@code relayCode} carry the AS's interaction
+     * URL and code.
+     */
+    public volatile String asPendingUrl;
+
     public volatile String missionS256;
     public volatile String pendingAgentId;
     public volatile String interactionDescription;

@@ -293,7 +293,7 @@ class PsCoreTest {
         assertThat(deferred.requirement()).isEqualTo(RequirementLevel.CLARIFICATION);
         assertThat(deferred.clarification()).isEqualTo("Which itinerary are you fetching?");
 
-        DeferredResponse after =
+        DeferredResponse after = (DeferredResponse)
                 ps.tokenBroker().postClarificationResponse(deferred.pendingId(), "a17", "the Kyoto one");
         assertThat(after.requirement()).isEqualTo(RequirementLevel.INTERACTION);
         assertThat(after.status()).isEqualTo(PendingStatus.PENDING);

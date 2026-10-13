@@ -116,7 +116,7 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-115 records | done | agent tokens `(iss, jti, sub, exp)`; person tokens with presentations and upstream `(iss, jti)`; PS-issued auth tokens; agent revocation times by `sub`. The cascade follows person tokens issued on a revoked token as `upstream_token` |
 | PS-103 JWT checks | done | library: `exp` without tolerance, `typ` first, person-token `exp − iat` ≤ 1h; PS: presented auth tokens need `iat` and `exp − iat` ≤ 1h. The optional future-`iat` `clock_skew` is not applied |
 | PS-104 uppercase agent identifiers | done (PS) | agent ids compared exactly, no case folding; library `Identifiers` still rejects uppercase in `parent_agent` (library finding) |
-| PS-50..54 four-party federation | done | `HttpAsFederator`: discovers `aauth-access.json`, POSTs `resource_token`/`agent_token`/`presented_token` (+ `upstream_token`) signed as the PS, follows 202s (claims answered, others polled with a signed GET) within 20 s, verifies the §9.1.3 delivery checks, relays well-formed AS errors, else 502 `as_unreachable`; presentations recorded for revocation. Draft-10 requests keep the fake federator |
+| PS-50..54 four-party federation | done | `HttpAsFederator`: discovers `aauth-access.json`, POSTs `resource_token`/`agent_token`/`presented_token` (+ `upstream_token`) signed as the PS, answers claims inline, passes interaction and clarification down to the agent (approval after 20 s), verifies the §9.1.3 delivery checks, relays well-formed AS errors, else 502 `as_unreachable`; presentations recorded for revocation. Draft-10 requests keep the fake federator |
 | PS-55 claims without `sub` | done | the PS releases no claims (it holds none beyond the directed `sub`, which is never sent) |
 | PS-60 person tokens on `upstream_token` | done | issued for the upstream person, `mission_s256` copied from the upstream token, `exp` capped by it; the intermediary sends no `mission_s256`/`subagent_token`; upstream `(iss, jti)` recorded |
 | PS-61 upstream verification | done | `UpstreamTokens`: person or auth `typ`; `aud` = the intermediary's agent-token `iss`; person-token `iss` / auth-token `ps` is this PS; auth-token `iss` is this PS or an AS it presented a person token to for that `aud`/`sub`; calling agent and person from the PS's records; `revoked_upstream_token` for a revoked token or an agent whose agent token was revoked after the upstream token was issued |
@@ -167,10 +167,20 @@ Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker
 in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
 persists them; it is a no-op in memory.
 
-Four-party gaps (2026-10-12): an AS `requirement=interaction` or `clarification` is polled until
-the 20-second deadline rather than passed down to the agent, and a 402 is `as_unreachable` (no
-payment support). A relayed AS error on a deferred request reaches the agent as polling error
-`<error>` with 403 (502 for `as_unreachable`), since pending failures carry a code, not a status.
+Four-party deferrals (2026-10-12, passed down 2026-10-13): `requirement=claims` is answered
+inline. An AS `requirement=interaction` or `clarification` is passed down to the agent at once:
+the PS opens a pending for the agent that shows the AS's interaction `url` and `code`, or its
+question (with `timeout` and `options`). An approval or plain 202 is waited on inline until the
+20-second deadline and then passed down the same way. While the pending waits on the AS
+(`PendingRecord.asPendingUrl`), each agent poll polls the AS pending URL once with a signed GET
+(at most once a second per pending). A 200 resolves the pending after the §9.1.3 delivery
+checks, a 202 updates what the agent sees, and an AS error ends it with that error. A
+clarification answer the agent POSTs is forwarded to the AS pending URL. After person consent, an
+AS deferral moves the same pending onto the AS, and the consent page no longer accepts a
+decision for it. Nothing runs in the background, so a pending waiting on an AS survives a restart
+in SQL mode. A 402 is `as_unreachable` (no payment support). A relayed AS error on a deferred
+request reaches the agent as polling error `<error>` with 403 (502 for `as_unreachable`), since
+pending failures carry a code, not a status.
 
 Phase 7 (2026-10-12): the Agent Server records the agent tokens it mints and, when the person
 revokes a binding, revokes that agent's live tokens at the PS named in `ps` (signed

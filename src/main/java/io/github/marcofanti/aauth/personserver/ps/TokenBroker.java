@@ -17,8 +17,11 @@ public interface TokenBroker {
     /** GET pending URL — poll until 200 or terminal error (token or interaction result). */
     PendingPollOutcome getPending(String pendingId, String agentId);
 
-    /** POST {@code clarification_response} to pending URL. */
-    DeferredResponse postClarificationResponse(String pendingId, String agentId, String responseText);
+    /**
+     * POST {@code clarification_response} to pending URL; a request waiting on an AS forwards it
+     * there, and may complete at once.
+     */
+    PendingPollOutcome postClarificationResponse(String pendingId, String agentId, String responseText);
 
     /**
      * POST updated {@code resource_token} to pending URL; a draft-11 pending also requires the
