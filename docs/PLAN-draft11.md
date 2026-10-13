@@ -190,3 +190,14 @@ Known, not fixed: the PS still fetches metadata and JWKS from URLs an authentica
 influence (resource `iss`, four-party `aud`, person-token `resource`), as the draft-10 code did
 for resource tokens; deployments should restrict egress. Memory-mode revocation records are not
 purged after `exp`.
+
+Local HTTPS (2026-10-12): the library is being reworked to port the Python 0.5.0 draft-11
+reference, fully strict. Server identifiers (iss, aud, ps) must then be lowercase HTTPS origins
+without a port, at issuance and at verification. The PS therefore runs behind the shared Caddy
+front (`caddy/Caddyfile`, identical in aauth-full-java-demo) as `https://ps.uma.lab`, with its
+co-located Agent Server at `https://as.uma.lab`. The portal keeps an explicitly configured
+`AAUTH_AS_PUBLIC_ORIGIN` (`PortalConfiguration.portalAgentSettings`), and the PS serves that
+issuer's agent tokens from the self JWKS (`selfAgentIssuer`). All run scripts use the hostnames.
+Draft-10 agent-token error codes now live in `AgentTokenRejectException`, because the library
+dropped them (draft-11 has none). Tests still use `http://localhost`; they move to HTTPS
+identifiers in the rework onto the strict library, routing outbound HTTP to local fakes.

@@ -18,7 +18,9 @@ OPEN=1 demo/demo.sh     # same, and macOS opens each UI page for you
 AUTO=1 demo/demo.sh     # unattended: approvals happen over the API (smoke test)
 ```
 
-Browser: `http://127.0.0.1:8765/ui/portal.html`, console token `demo-admin`.
+Browser: `https://ps.uma.lab/ui/portal.html`, console token `demo-admin`. The server is reached
+through the shared local HTTPS front; see "Local HTTPS" in the top-level README for the
+one-time setup (`/etc/hosts`, `mkcert -install`, `scripts/setup-tls.sh`).
 
 Requirements: JDK 26 + Maven (first run builds the jar), `curl`, `openssl`,
 `python3`. State is in-memory — restart `run-demo.sh` for a clean slate.

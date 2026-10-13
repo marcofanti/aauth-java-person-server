@@ -131,14 +131,14 @@ public final class PsAuth {
             String message = e.getMessage() == null ? "invalid agent token" : e.getMessage();
             String lower = message.toLowerCase(Locale.ROOT);
             if (lower.contains("agent token expired") || lower.contains("expiredsignature")) {
-                throw new AgentTokenRejectException(message, ErrorCodes.ERROR_EXPIRED_AGENT_TOKEN);
+                throw new AgentTokenRejectException(message, AgentTokenRejectException.EXPIRED_AGENT_TOKEN);
             }
             if (lower.contains("http signature verification failed")
                     || lower.contains("missing http signature")
                     || lower.contains("signature-key must use scheme=jwt")) {
                 throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_SIGNATURE);
             }
-            throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_AGENT_TOKEN);
+            throw new AgentTokenRejectException(message, AgentTokenRejectException.INVALID_AGENT_TOKEN);
         }
         admit(verified);
         Long agentTokenExp = Jwts.parse(verified.agentTokenJwt()).numericClaim("exp");

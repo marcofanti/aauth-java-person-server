@@ -18,8 +18,15 @@ set -euo pipefail
 
 DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$DEMO_DIR")"
-BASE="${BASE:-http://127.0.0.1:8765}"
+BASE="${BASE:-https://ps.uma.lab}"
 BASE="${BASE%/}"
+# The *.uma.lab certificate comes from mkcert's local CA: point curl and the Python agents at it.
+CURL_TLS=()
+if [[ $BASE == https://* ]] && command -v mkcert >/dev/null; then
+  CURL_TLS=(--cacert "$(mkcert -CAROOT)/rootCA.pem")
+  export SSL_CERT_FILE="${SSL_CERT_FILE:-$(mkcert -CAROOT)/rootCA.pem}"
+fi
+curl() { command curl "${CURL_TLS[@]+"${CURL_TLS[@]}"}" "$@"; }
 ADMIN_TOKEN="${ADMIN_TOKEN:-demo-admin}"
 PS_REPO="${PS_REPO:-${REPO_DIR}/../aauth-person-server}"
 AUTO="${AUTO:-0}"

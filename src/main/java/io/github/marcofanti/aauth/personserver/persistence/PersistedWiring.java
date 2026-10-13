@@ -49,7 +49,8 @@ public final class PersistedWiring {
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
         Function<String, Map<String, Object>> resourceResolver =
                 options.resourceJwks() != null ? options.resourceJwks() : new ResourceJwksResolver();
-        AgentServerJwksResolver agentResolver = new AgentServerJwksResolver(origin, trust, options.selfJwksProvider());
+        AgentServerJwksResolver agentResolver =
+                new AgentServerJwksResolver(origin, options.selfAgentIssuer(), trust, options.selfJwksProvider());
         SqlIssuedTokenStore issuedStore = new SqlIssuedTokenStore(dataSource);
         AuthTokenIssuer authIssuer =
                 new AuthTokenIssuer(origin, psSigning, options.userId(), options.authTokenLifetime(), issuedStore);

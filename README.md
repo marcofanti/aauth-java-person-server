@@ -37,16 +37,43 @@ mvn verify          # tests, JaCoCo 80% line gate, Spotless check
 One jar, three apps, selected by Spring profile (default = unified portal):
 
 ```bash
-./run-server.sh     # portal on 127.0.0.1:8765, SQLite persistence, real signatures
+./run-server.sh     # https://ps.uma.lab + https://as.uma.lab, SQLite persistence, real signatures
 ```
+
+### Local HTTPS (required for draft-11)
+
+Draft-11 server identifiers are HTTPS origins without a port, so the portal listens on
+`127.0.0.1:8765` behind a local Caddy front on `:443`. The Caddyfile in `caddy/` is shared
+byte-for-byte with aauth-full-java-demo, and both repos use the same hostnames:
+
+| Hostname | Upstream | Serves |
+| --- | --- | --- |
+| `ps.uma.lab` | `127.0.0.1:8765` | Person Server |
+| `as.uma.lab` | `127.0.0.1:8765` | the portal's Agent Server (same process, own identifier) |
+| `sca.uma.lab`, `maa.uma.lab` | `127.0.0.1:9999`, `:9998` | demo resources (aauth-full-java-demo) |
+
+One-time setup:
+
+1. Add `127.0.0.1 ps.uma.lab as.uma.lab sca.uma.lab maa.uma.lab` to `/etc/hosts` (sudo).
+2. `brew install caddy mkcert && mkcert -install` (trusts mkcert's local CA).
+3. `scripts/setup-tls.sh` creates the `*.uma.lab` certificate and a JVM truststore in
+   `~/.local/share/uma-lab-tls/`.
+
+`run-server.sh` and `demo/run-demo.sh` start Caddy through `scripts/run-caddy.sh`, which does
+nothing if a Caddy admin API already answers on `localhost:2019` (the other repo may own it).
+Stop only the listener (`lsof -ti tcp:8765 -sTCP:LISTEN`); killing every process on the port
+also kills Caddy's upstream connections. Don't run the javauma4agents Docker stack at the same
+time: its Envoy also binds `:443`. Clients outside the JVM trust the certificate with
+`curl --cacert "$(mkcert -CAROOT)/rootCA.pem"` or `SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem"`.
 
 Dev mode (in-memory state, stub agent identification):
 
 ```bash
-AAUTH_PS_PUBLIC_ORIGIN=http://127.0.0.1:8765 AAUTH_AS_PUBLIC_ORIGIN=http://127.0.0.1:8765 \
+scripts/run-caddy.sh
+AAUTH_PS_PUBLIC_ORIGIN=https://ps.uma.lab AAUTH_AS_PUBLIC_ORIGIN=https://as.uma.lab \
 AAUTH_PS_ADMIN_TOKEN=mytoken AAUTH_AS_PERSON_TOKEN=mytoken \
 AAUTH_PS_INSECURE_DEV=true AAUTH_AS_INSECURE_DEV=true \
-java -jar target/aauth-java-person-server-0.1.0-SNAPSHOT.jar --server.port=8765
+java -jar target/aauth-java-person-server-0.1.0-SNAPSHOT.jar --server.address=127.0.0.1 --server.port=8765
 ```
 
 Standalone servers: add `--spring.profiles.active=ps` (Person Server only, original PS
@@ -58,7 +85,7 @@ Environment variables are the Python server's, unchanged: `AAUTH_PS_*`, `AAUTH_A
 [Python README](https://github.com/christian-posta/aauth-person-server#readme) for the
 full tables.
 
-Portal UI: `http://127.0.0.1:8765/ui/index.html` (sign in with the admin/person token).
+Portal UI: `https://ps.uma.lab/ui/index.html` (sign in with the admin/person token).
 
 ## Demo
 
@@ -82,16 +109,17 @@ first shipped in 0.2.3). This repo pins 0.2.3, so the full suite passes.
 
 Run from a sibling clone of
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) at
-`../aauth-person-server`, with this server on 8765:
+`../aauth-person-server`, with this server behind the local HTTPS front (see Run) and
+`export SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem"` (re-verified over HTTPS 2026-10-12):
 
-- `BASE_URL=http://127.0.0.1:8765 ./scripts/ps-demo.sh` — insecure-dev PS flow ✓
-- `.venv/bin/python scripts/agent-server-signed-walkthrough.py --base http://127.0.0.1:8765
+- `BASE_URL=https://ps.uma.lab ./scripts/ps-demo.sh` — insecure-dev PS flow ✓
+- `.venv/bin/python scripts/agent-server-signed-walkthrough.py --base https://ps.uma.lab
   --person-token mytoken --pending-prefix /register/pending` — real-signature registration,
   approval, agent token, jkt-jwt refresh ✓ (`AAUTH_AS_INSECURE_DEV=false`)
-- `.venv/bin/python scripts/ps-token-mode3.py --base http://127.0.0.1:8765` — mode-3 secure
+- `.venv/bin/python scripts/ps-token-mode3.py --base https://ps.uma.lab` — mode-3 secure
   `POST /token` returning a real `aa-auth+jwt` ✓ (`AAUTH_PS_INSECURE_DEV=false`,
   `AAUTH_AS_INSECURE_DEV=true`; approve the registration via UI or API)
-- `./scripts/hwk-ps-client.sh --base-url http://127.0.0.1:8765 --permission-action WebSearch
+- `./scripts/hwk-ps-client.sh --base-url https://ps.uma.lab --permission-action WebSearch
   --audit` — HWK-signed `/mission`, `/permission`, `/audit` ✓; `POST /token` returns the
   documented 401 (`scheme=jwt` required in secure mode), identical to the Python server
 - `./scripts/agent-server-walkthrough.sh` — stale upstream: it sends `label` instead of the

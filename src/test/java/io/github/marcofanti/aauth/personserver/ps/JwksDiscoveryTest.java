@@ -104,4 +104,16 @@ class JwksDiscoveryTest {
                 new AgentServerJwksResolver("http://ps.uma.lab", new MemoryAgentServerTrustRegistry(null), null);
         assertThat(resolver.apply("http://ps.uma.lab")).isNull();
     }
+
+    @Test
+    void aCoLocatedAgentServerWithItsOwnOriginIsServedFromTheSelfJwks() {
+        DeferredAgentSelfJwks selfJwks = new DeferredAgentSelfJwks();
+        selfJwks.set(() -> JWKS);
+        AgentServerJwksResolver resolver = new AgentServerJwksResolver(
+                "https://ps.uma.lab", "https://as.uma.lab/", new MemoryAgentServerTrustRegistry(null), selfJwks);
+
+        assertThat(resolver.apply("https://as.uma.lab")).isEqualTo(JWKS);
+        assertThat(resolver.apply("https://ps.uma.lab")).isEqualTo(JWKS);
+        assertThat(resolver.apply("https://other-as.uma.lab")).isNull();
+    }
 }

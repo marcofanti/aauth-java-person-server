@@ -141,7 +141,7 @@ public class PsExceptionAdvice {
         // Signature-Error header (§11.3.4) is the machine-readable carrier.
         String code =
                 switch (e.error()) {
-                    case ErrorCodes.ERROR_EXPIRED_AGENT_TOKEN -> "expired_jwt";
+                    case AgentTokenRejectException.EXPIRED_AGENT_TOKEN -> "expired_jwt";
                     case ErrorCodes.ERROR_INVALID_SIGNATURE -> ErrorCodes.ERROR_INVALID_SIGNATURE;
                     case SignatureError.CLOCK_SKEW -> SignatureError.CLOCK_SKEW;
                     default -> "invalid_jwt";

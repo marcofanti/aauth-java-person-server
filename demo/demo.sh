@@ -10,13 +10,19 @@
 #   demo/demo.sh                 # interactive: you approve in the UI
 #   AUTO=1 demo/demo.sh          # unattended: approvals via API
 #   OPEN=1 demo/demo.sh          # also open UI pages in the browser (macOS)
-#   BASE=http://127.0.0.1:8765 ADMIN_TOKEN=demo-admin demo/demo.sh
+#   BASE=https://ps.uma.lab ADMIN_TOKEN=demo-admin demo/demo.sh
 #
 # Requires: curl, openssl, python3.
 set -euo pipefail
 
-BASE="${BASE:-http://127.0.0.1:8765}"
+BASE="${BASE:-https://ps.uma.lab}"
 BASE="${BASE%/}"
+# The *.uma.lab certificate comes from mkcert's local CA, which curl does not trust by default.
+CURL_TLS=()
+if [[ $BASE == https://* ]] && command -v mkcert >/dev/null; then
+  CURL_TLS=(--cacert "$(mkcert -CAROOT)/rootCA.pem")
+fi
+curl() { command curl "${CURL_TLS[@]+"${CURL_TLS[@]}"}" "$@"; }
 ADMIN_TOKEN="${ADMIN_TOKEN:-demo-admin}"
 AUTO="${AUTO:-0}"
 OPEN="${OPEN:-0}"

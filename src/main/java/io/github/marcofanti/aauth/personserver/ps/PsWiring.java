@@ -31,7 +31,8 @@ public final class PsWiring {
             Supplier<Map<String, Object>> selfJwksProvider,
             Function<String, Map<String, Object>> resourceJwks,
             String missionEvaluator,
-            Long missionLifetimeSeconds) {
+            Long missionLifetimeSeconds,
+            String selfAgentIssuer) {
 
         public static Builder builder(String publicOrigin) {
             return new Builder(publicOrigin);
@@ -53,6 +54,7 @@ public final class PsWiring {
             private Function<String, Map<String, Object>> resourceJwks;
             private String missionEvaluator;
             private Long missionLifetimeSeconds;
+            private String selfAgentIssuer;
 
             private Builder(String publicOrigin) {
                 this.publicOrigin = publicOrigin;
@@ -128,6 +130,15 @@ public final class PsWiring {
                 return this;
             }
 
+            /**
+             * Issuer of the co-located Agent Server when it has its own origin (portal with a
+             * distinct {@code AAUTH_AS_PUBLIC_ORIGIN}); its agent tokens verify with the self JWKS.
+             */
+            public Builder selfAgentIssuer(String value) {
+                this.selfAgentIssuer = value;
+                return this;
+            }
+
             public Options build() {
                 return new Options(
                         publicOrigin,
@@ -144,7 +155,8 @@ public final class PsWiring {
                         selfJwksProvider,
                         resourceJwks,
                         missionEvaluator,
-                        missionLifetimeSeconds);
+                        missionLifetimeSeconds,
+                        selfAgentIssuer);
             }
         }
     }
@@ -202,7 +214,8 @@ public final class PsWiring {
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
         Function<String, Map<String, Object>> resourceResolver =
                 options.resourceJwks() != null ? options.resourceJwks() : new ResourceJwksResolver();
-        AgentServerJwksResolver agentResolver = new AgentServerJwksResolver(origin, trust, options.selfJwksProvider());
+        AgentServerJwksResolver agentResolver =
+                new AgentServerJwksResolver(origin, options.selfAgentIssuer(), trust, options.selfJwksProvider());
         MemoryIssuedTokenStore issuedStore = new MemoryIssuedTokenStore();
         AuthTokenIssuer authIssuer =
                 new AuthTokenIssuer(origin, psSigning, options.userId(), options.authTokenLifetime(), issuedStore);

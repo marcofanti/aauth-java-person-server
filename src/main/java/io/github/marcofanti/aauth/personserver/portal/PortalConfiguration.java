@@ -7,6 +7,7 @@ import io.github.marcofanti.aauth.personserver.agentserver.web.AsSettings;
 import io.github.marcofanti.aauth.personserver.persistence.DbHolder;
 import io.github.marcofanti.aauth.personserver.persistence.PersistedWiring;
 import io.github.marcofanti.aauth.personserver.ps.DeferredAgentSelfJwks;
+import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
 import io.github.marcofanti.aauth.personserver.ps.web.PsAuth;
@@ -39,7 +40,20 @@ public class PortalConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public AsSettings asSettings(PsSettings psSettings) {
-        return AsSettings.fromEnv(System.getenv()).withPortalAlignment(psSettings.origin(), "AAuth Person Portal");
+        return portalAgentSettings(System.getenv(), psSettings.origin());
+    }
+
+    /**
+     * The portal's Agent Server shares the PS origin (Python {@code create_portal_app}) unless
+     * {@code AAUTH_AS_PUBLIC_ORIGIN} names a different one, e.g. {@code https://as.uma.lab} beside
+     * {@code https://ps.uma.lab}: draft-11 identifiers are port-less, so two hostnames are the
+     * only way to give each server its own identifier.
+     */
+    static AsSettings portalAgentSettings(Map<String, String> env, String psOrigin) {
+        String configured = env.get("AAUTH_AS_PUBLIC_ORIGIN");
+        String origin =
+                configured == null || configured.isBlank() ? psOrigin : MissionUtils.stripTrailingSlash(configured);
+        return AsSettings.fromEnv(env).withPortalAlignment(origin, "AAuth Person Portal");
     }
 
     @Bean
@@ -56,8 +70,10 @@ public class PortalConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PsContainer psContainer(PsSettings settings, DeferredAgentSelfJwks deferredAgentSelfJwks, DbHolder db) {
-        PsWiring.Options options = PsConfiguration.buildOptions(settings, deferredAgentSelfJwks);
+    public PsContainer psContainer(
+            PsSettings settings, AsSettings asSettings, DeferredAgentSelfJwks deferredAgentSelfJwks, DbHolder db) {
+        String agentIssuer = asSettings.origin().equals(settings.origin()) ? null : asSettings.origin();
+        PsWiring.Options options = PsConfiguration.buildOptions(settings, deferredAgentSelfJwks, agentIssuer);
         return db.isPresent()
                 ? PersistedWiring.buildPersistedPs(db.dataSource(), options)
                 : PsWiring.buildMemoryPs(options);

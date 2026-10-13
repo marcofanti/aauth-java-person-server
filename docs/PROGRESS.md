@@ -76,6 +76,11 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-10-12 — Local HTTPS front**: draft-11 identifiers are HTTPS origins without a port,
+  so the portal listens on 127.0.0.1:8765 behind Caddy on :443 as `ps.uma.lab` (Person Server)
+  and `as.uma.lab` (its Agent Server). The Caddyfile is shared byte-for-byte with
+  aauth-full-java-demo. Diverges from Python's single-origin portal only when
+  `AAUTH_AS_PUBLIC_ORIGIN` names a different origin.
 - **2026-10-12 — AAuth draft-11, dual-stack** (branch `draft11`, plan and per-item status in
   [PLAN-draft11.md](PLAN-draft11.md)): emits draft-11 while still accepting draft-10, built
   against aauth-java-library `0.3.0-SNAPSHOT`. New endpoints `/auth-token`,
