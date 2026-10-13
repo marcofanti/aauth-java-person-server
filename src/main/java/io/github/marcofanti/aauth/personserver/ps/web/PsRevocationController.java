@@ -193,7 +193,7 @@ public class PsRevocationController {
 
     private Caller callerFor(String iss, String dwk) {
         if (AGENT_DWK.equals(dwk)) {
-            if (!iss.equals(psOrigin) && !ps.trustRegistry().isTrusted(iss)) {
+            if (!ps.agentJwksResolver().isTrusted(iss)) {
                 throw new ProblemError(403, "unsupported_iss", "this PS does not trust agent provider " + iss);
             }
             return new Caller(iss, CallerKind.AGENT_PROVIDER);

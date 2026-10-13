@@ -56,6 +56,12 @@ public final class AgentServerJwksResolver implements Function<String, Map<Strin
         return hit.jwks();
     }
 
+    /** Whether {@code iss} is this PS, its co-located Agent Server, or an Agent Server it trusts. */
+    public boolean isTrusted(String iss) {
+        String normalized = IssuerUrls.normalizeIssuer(iss);
+        return normalized.equals(psOrigin) || normalized.equals(selfAgentIssuer) || trust.isTrusted(normalized);
+    }
+
     @Override
     public Map<String, Object> apply(String iss) {
         String normalized = IssuerUrls.normalizeIssuer(iss);
