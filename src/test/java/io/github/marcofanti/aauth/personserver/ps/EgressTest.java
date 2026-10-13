@@ -8,7 +8,16 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.spi.InetAddressResolver;
+import java.net.spi.InetAddressResolver.LookupPolicy;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -98,5 +107,88 @@ class EgressTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    /** A DNS that has rebound every name to loopback. */
+    private static final InetAddressResolver REBOUND_DNS = new InetAddressResolver() {
+        @Override
+        public Stream<InetAddress> lookupByName(String host, LookupPolicy policy) throws UnknownHostException {
+            return Stream.of(InetAddress.getByAddress(host, new byte[] {127, 0, 0, 1}));
+        }
+
+        @Override
+        public String lookupByAddress(byte[] addr) {
+            return "rebound.example";
+        }
+    };
+
+    private static final LookupPolicy ANY_FAMILY = LookupPolicy.of(LookupPolicy.IPV4 | LookupPolicy.IPV6);
+
+    @Test
+    void aPinnedHostResolvesToTheAddressesCheckedNotTheCurrentDnsAnswer() throws Exception {
+        InetAddress checked = InetAddress.getByName("93.184.216.34");
+        Egress.pin("rebind.example", List.of(checked), Instant.now().plus(Egress.PIN_TTL));
+        InetAddressResolver resolver = new EgressResolverProvider.PinningResolver(REBOUND_DNS);
+
+        assertThat(resolver.lookupByName("REBIND.example", ANY_FAMILY)).containsExactly(checked);
+        assertThat(resolver.lookupByName("unpinned.example", ANY_FAMILY))
+                .allSatisfy(address -> assertThat(address.isLoopbackAddress()).isTrue());
+    }
+
+    @Test
+    void anExpiredPinFallsBackToTheDns() throws Exception {
+        Egress.pin(
+                "expired.example",
+                List.of(InetAddress.getByName("93.184.216.34")),
+                Instant.now().minusSeconds(1));
+        InetAddressResolver resolver = new EgressResolverProvider.PinningResolver(REBOUND_DNS);
+
+        assertThat(resolver.lookupByName("expired.example", ANY_FAMILY))
+                .allSatisfy(address -> assertThat(address.isLoopbackAddress()).isTrue());
+    }
+
+    @Test
+    void aPinOfTheWrongFamilyIsUnknownHost() throws Exception {
+        Egress.pin(
+                "v4only.example",
+                List.of(InetAddress.getByName("93.184.216.34")),
+                Instant.now().plus(Egress.PIN_TTL));
+        InetAddressResolver resolver = new EgressResolverProvider.PinningResolver(REBOUND_DNS);
+
+        assertThatThrownBy(() -> resolver.lookupByName("v4only.example", LookupPolicy.of(LookupPolicy.IPV6)))
+                .isInstanceOf(UnknownHostException.class);
+    }
+
+    @Test
+    void theHttpClientConnectsThroughThePin() throws Exception {
+        assertThat(Egress.pinningActive()).isTrue();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            Egress.pin(
+                    "pinned-only.example",
+                    List.of(InetAddress.getByName("127.0.0.1")),
+                    Instant.now().plus(Egress.PIN_TTL));
+            HttpResponse<Void> response = HttpClient.newHttpClient()
+                    .send(
+                            HttpRequest.newBuilder(URI.create("http://pinned-only.example:"
+                                            + server.getAddress().getPort() + "/"))
+                                    .build(),
+                            HttpResponse.BodyHandlers.discarding());
+            assertThat(response.statusCode()).isEqualTo(204);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void aHostNameResolvingToLoopbackIsRefused() {
+        assertThatThrownBy(() -> Egress.target("https://localhost/x"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("internal address");
     }
 }

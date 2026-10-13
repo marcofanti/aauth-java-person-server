@@ -201,9 +201,15 @@ Egress (2026-10-13): agents can influence the URLs the PS fetches (resource `iss
   unique-local, IPv4-mapped) unless it matches `AAUTH_PS_EGRESS_ALLOW_HOSTS`.
 - Bodies are capped at 1 MiB, with 5-second timeouts.
 
-Left open: the HTTP client resolves the host again after the check, so DNS rebinding is not
-covered; deployments should still restrict egress at the network layer. Memory-mode
-revocation records are not purged after `exp`.
+DNS rebinding (2026-10-13): a host that passes the check is pinned for 60 s to the addresses
+checked, and `EgressResolverProvider` (a JEP 418 `InetAddressResolverProvider` registered in
+`META-INF/services`) answers the HTTP client's own lookup from that pin, so the connection goes to
+an address that was validated. The check itself resolves through the built-in resolver, bypassing
+pins and the JVM cache; IP literals are checked without DNS. The resolver is JVM-wide but only
+changes lookups of pinned hosts. If the provider does not load, the server logs a warning at
+startup and the check falls back to `InetAddress` (verified on the Spring Boot fat jar: it loads,
+and a jar without the service file warns). Network-layer egress rules are still advisable.
+Revocation records are purged after `exp` (see "Record expiry").
 
 Local HTTPS (2026-10-12): the library is being reworked to port the Python 0.5.0 draft-11
 reference, fully strict. Server identifiers (iss, aud, ps) must then be lowercase HTTPS origins

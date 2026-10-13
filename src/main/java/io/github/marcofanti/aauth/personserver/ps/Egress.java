@@ -8,14 +8,20 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.http.HttpResponse;
+import java.net.spi.InetAddressResolver;
+import java.net.spi.InetAddressResolver.LookupPolicy;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
 import java.util.stream.Collectors;
 
@@ -28,16 +34,26 @@ import java.util.stream.Collectors;
  * address check, e.g. {@code *.uma.lab} for the local HTTPS setup. Responses are capped at
  * {@link #MAX_BODY_BYTES}.
  *
- * <p>The check resolves the host before the HTTP client resolves it again, so a DNS answer
- * that changes in between (rebinding) is not covered; deployments should also restrict egress
- * at the network layer.
+ * <p>A host that passes is pinned to the addresses just checked for {@link #PIN_TTL}, and
+ * {@link EgressResolverProvider} answers the HTTP client's own lookup from that pin, so a DNS
+ * answer that changes between the check and the connection (rebinding) cannot reach an internal
+ * address. Without that provider installed the check falls back to {@link InetAddress} and the
+ * gap remains; {@link #pinningActive()} reports which applies.
  */
 public final class Egress {
 
     /** Largest response body the PS reads from a peer. */
     public static final int MAX_BODY_BYTES = 1 << 20;
 
+    /** How long a validated host stays pinned to the addresses checked. */
+    public static final Duration PIN_TTL = Duration.ofSeconds(60);
+
+    private static final int MAX_PINS = 10_000;
+
+    private record Pin(List<InetAddress> addresses, Instant expires) {}
+
     private static volatile Set<String> allowedHosts = parse(System.getenv("AAUTH_PS_EGRESS_ALLOW_HOSTS"));
+    private static final Map<String, Pin> pins = new ConcurrentHashMap<>();
 
     private Egress() {}
 
@@ -75,19 +91,80 @@ public final class Egress {
         if (isAllowListed(host)) {
             return uri;
         }
-        InetAddress[] addresses;
+        InetAddress literal = literal(host);
+        if (literal != null) {
+            refuseInternal(host, List.of(literal));
+            return uri;
+        }
+        List<InetAddress> addresses;
         try {
-            addresses = InetAddress.getAllByName(host);
+            addresses = resolve(host);
         } catch (UnknownHostException e) {
             throw new IllegalArgumentException("egress refused: cannot resolve " + host, e);
         }
+        refuseInternal(host, addresses);
+        pin(host, addresses, Instant.now().plus(PIN_TTL));
+        return uri;
+    }
+
+    private static void refuseInternal(String host, List<InetAddress> addresses) {
         for (InetAddress address : addresses) {
             if (isInternal(address)) {
                 throw new IllegalArgumentException("egress refused: " + host + " resolves to internal address "
                         + address.getHostAddress() + "; allow it with AAUTH_PS_EGRESS_ALLOW_HOSTS");
             }
         }
-        return uri;
+    }
+
+    /** The address an IP-literal host names (IPv6 in brackets), or {@code null} for a host name. */
+    private static InetAddress literal(String host) {
+        String bare = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        try {
+            return InetAddress.ofLiteral(bare);
+        } catch (IllegalArgumentException notALiteral) {
+            return null;
+        }
+    }
+
+    /** Fresh addresses for {@code host}: from the built-in resolver, bypassing pins and the JVM cache. */
+    private static List<InetAddress> resolve(String host) throws UnknownHostException {
+        InetAddressResolver builtin = EgressResolverProvider.builtin();
+        if (builtin == null) {
+            return List.of(InetAddress.getAllByName(host));
+        }
+        List<InetAddress> addresses = builtin.lookupByName(host, LookupPolicy.of(LookupPolicy.IPV4 | LookupPolicy.IPV6))
+                .toList();
+        if (addresses.isEmpty()) {
+            throw new UnknownHostException(host);
+        }
+        return addresses;
+    }
+
+    static void pin(String host, List<InetAddress> addresses, Instant expires) {
+        if (pins.size() >= MAX_PINS) {
+            Instant now = Instant.now();
+            pins.values().removeIf(stale -> stale.expires().isBefore(now));
+        }
+        pins.put(host.toLowerCase(Locale.ROOT), new Pin(List.copyOf(addresses), expires));
+    }
+
+    /** The addresses {@code host} is pinned to, or {@code null} when it is not (or no longer) pinned. */
+    static List<InetAddress> pinned(String host) {
+        Pin pin = pins.get(host.toLowerCase(Locale.ROOT));
+        return pin == null || pin.expires().isBefore(Instant.now()) ? null : pin.addresses();
+    }
+
+    /**
+     * Whether the HTTP client's lookups go through {@link EgressResolverProvider}. The JVM loads
+     * its resolver on the first lookup, so this makes one.
+     */
+    public static boolean pinningActive() {
+        try {
+            InetAddress.getByName("localhost");
+        } catch (UnknownHostException ignored) {
+            // The lookup only makes the JVM load its resolver; the answer does not matter.
+        }
+        return EgressResolverProvider.builtin() != null;
     }
 
     private static boolean isAllowListed(String host) {
