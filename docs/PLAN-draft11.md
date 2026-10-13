@@ -155,7 +155,7 @@ deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
 Revocation (2026-10-12): the PS answers synchronously. Downstream calls run in parallel with
 5-second timeouts, so the cascade finishes inside the ~20 s hold §11.12.3 suggests, and the
 PS never answers 202. A downstream 202 counts as `revocation_unavailable` (the PS does not poll
-it); a repeated revocation retries. Records are not purged after `exp` (discarding is a MAY).
+it); a repeated revocation retries. Records are purged after `exp` (see "Record expiry").
 Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker's in-place writes
 (`verifiedResourceClaims`, `tokenAgentCnfJwk`, `evaluatorReason`, clarification rounds) were lost
 in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
