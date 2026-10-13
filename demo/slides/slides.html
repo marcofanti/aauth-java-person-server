@@ -168,8 +168,8 @@ body { background: #e2e8f0; }
           <span class="mono" style="font-size:25px;">ps</span> and
           <span class="mono" style="font-size:25px;">agent-server</span> run standalone</li>
       <li><span class="strong">All crypto via aauth-java-library</span> — RFC 9421 message
-          signatures, Signature-Key schemes (hwk / jkt-jwt / jwt), JWKS, JWT — nothing reimplemented</li>
-      <li><span class="strong">Guardrails</span> — 132 tests, JaCoCo 80% line gate,
+          signatures, Signature-Key schemes (hwk / jkt-jwt / jwt / jwks_uri), JWKS, JWT — nothing reimplemented</li>
+      <li><span class="strong">Guardrails</span> — 285 tests, JaCoCo 80% line gate,
           Spotless, zero-warning build</li>
       <li><span class="strong">Original browser consoles</span> — portal, consent, PS admin,
           AS registrations, authored from a documented API contract</li>
@@ -205,7 +205,7 @@ body { background: #e2e8f0; }
       <li>Routes, status codes (202 deferred flows, 401 challenges), error bodies</li>
       <li>Env vars: <span class="mono" style="font-size:23px;">AAUTH_PS_*&nbsp;·&nbsp;AAUTH_AS_*&nbsp;·&nbsp;AAUTH_DATABASE_URL</span></li>
       <li>JWT claim shapes, pending/consent semantics, canonical mission bytes</li>
-      <li>Python walkthrough scripts pass unchanged, both security modes</li>
+      <li>Python walkthrough scripts passed unchanged through draft-10</li>
     </ul>
   </div>
   <div class="card" style="top:470px; left:990px; width:810px; height:420px; padding:48px;">
@@ -382,7 +382,7 @@ body { background: #e2e8f0; }
     <ul style="font-size:28px;">
       <li><span class="strong">Secure (production shape)</span> — RFC 9421 verification,
           <span class="mono" style="font-size:23px;">scheme=jwt</span> on
-          <span class="mono" style="font-size:23px;">POST /token</span>, real Ed25519-signed
+          <span class="mono" style="font-size:23px;">POST /auth-token</span>, real Ed25519-signed
           <span class="mono" style="font-size:23px;">aa-auth+jwt</span></li>
       <li><span class="strong">Insecure-dev (demos, localhost only)</span> — signatures parsed,
           not verified; stub agent identity; fake federated tokens</li>
@@ -435,19 +435,50 @@ body { background: #e2e8f0; }
   <div class="footer">demo/README.md has the talk track<span class="num">11</span></div>
 </div>
 
-<!-- ═══════════════ 12 · Status ═══════════════ -->
+<!-- ═══════════════ 12 · Draft-11 ═══════════════ -->
+<div class="slide" data-canvas-width="1920" data-canvas-height="1080">
+  <div class="kicker">11 · Draft-11</div>
+  <div class="slide-title">What draft-11 added</div>
+  <div style="position:absolute; top:330px; left:120px; width:1680px; font-family:'source-sans-3'; font-size:27px; color:#334155;">
+    <div style="display:flex; gap:20px; margin-bottom:20px;">
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">/person-token</span><br><span class="strong">Person tokens</span> — a directed <span class="mono" style="font-size:23px;">sub</span> per resource; first use asks the person</div>
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">/auth-token</span><br><span class="strong">Auth tokens</span> — resource token + <span class="mono" style="font-size:23px;">presented_token</span>, cross-checked</div>
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">/agent-missions</span><br><span class="strong">Missions</span> — approval by <span class="mono" style="font-size:23px;">s256</span>, update, completion, expiry</div>
+    </div>
+    <div style="display:flex; gap:20px;">
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">/revoke</span><br><span class="strong">Revocation</span> — cascades to resources and access servers</div>
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">four-party</span><br><span class="strong">Federation</span> — the PS calls the resource's access server, signed as itself</div>
+      <div style="flex:1; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:26px 30px;">
+        <span class="mono" style="color:#0f766e; font-size:23px;">upstream_token</span><br><span class="strong">Call chaining</span> — an intermediary acts for the calling agent's person</div>
+    </div>
+  </div>
+  <div class="body" style="position:absolute; top:790px; left:120px; width:1680px; font-size:28px; color:#475569;">
+    Identifiers are HTTPS origins without a port, so locally the portal runs behind Caddy as
+    <span class="mono" style="font-size:25px;">https://ps.uma.lab</span> and
+    <span class="mono" style="font-size:25px;">https://as.uma.lab</span>. Draft-10 clients keep
+    <span class="mono" style="font-size:25px;">/token</span> and <span class="mono" style="font-size:25px;">/mission</span>.
+  </div>
+  <div class="footer">docs/PLAN-draft11.md has the per-item status<span class="num">12</span></div>
+</div>
+
+<!-- ═══════════════ 13 · Status ═══════════════ -->
 <div class="slide dark" data-canvas-width="1920" data-canvas-height="1080">
-  <div class="kicker">11 · Status</div>
+  <div class="kicker">12 · Status</div>
   <div class="slide-title" style="color:#ffffff;">Where it stands</div>
   <div class="body" style="position:absolute; top:340px; left:120px; width:1560px; font-size:31px; color:#cbd5e1; line-height:1.9;">
-    ✓ &nbsp;All eight phases implemented — domain, PS core, HTTP, Agent Server, portal, persistence<br>
-    ✓ &nbsp;Security review: line-for-line parity with the reference, thread-safety hardened<br>
-    ✓ &nbsp;Interop: reference Python walkthroughs pass unchanged, both security modes<br>
-    ✓ &nbsp;Original UI + this demo, scripted and self-testing<br>
-    ✓ &nbsp;Acceptance: aauth-full-java-demo runs against this server — all five modes pass
+    ✓ &nbsp;AAuth draft-11 on aauth-java-library 0.3.0 — strict, ported from the Python reference<br>
+    ✓ &nbsp;Draft-10 clients still accepted; Python draft-10 scripts wait for its aauth 0.5.x<br>
+    ✓ &nbsp;Security reviews: thread-safety, revocation, federation, outbound-request gate<br>
+    ✓ &nbsp;Original UI + this demo, scripted and self-testing over HTTPS<br>
+    ✓ &nbsp;Acceptance: aauth-full-java-demo — all six modes pass over HTTPS
   </div>
   <div class="mono" style="position:absolute; top:730px; left:124px; font-size:25px; color:#94a3b8; line-height:2.0;">
-    demo/run-demo.sh&nbsp;&nbsp;→&nbsp;&nbsp;http://127.0.0.1:8765/ui/<br>
+    demo/run-demo.sh&nbsp;&nbsp;→&nbsp;&nbsp;https://ps.uma.lab/ui/<br>
     demo/demo.sh&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→&nbsp;&nbsp;seven acts, one person in the loop
   </div>
   <div class="mono" style="position:absolute; bottom:64px; left:124px; font-size:23px; color:#475569;">

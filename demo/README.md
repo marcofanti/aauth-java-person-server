@@ -76,4 +76,6 @@ run. `PORT=…` / `BASE=…` relocate both scripts if 8765 is taken.
 ## Slides
 
 `slides/aauth-java-person-server.pptx` — deck for presenting the project and
-this demo (source HTML in `slides/`).
+this demo. Edit `slides/slides.html`, then rebuild the deck with
+`uv run --no-project --with python-pptx==1.0.2 demo/slides/build_deck.py`, which renders each
+slide with headless Chrome.
