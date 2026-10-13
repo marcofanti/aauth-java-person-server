@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,9 @@ public final class FakeRevocationResource implements AutoCloseable {
     private volatile boolean advertiseEndpoint = true;
     private volatile int status = 200;
     private volatile String responseBody = "";
+    private volatile Duration delay = Duration.ZERO;
+    private volatile String deferTo;
+    private final List<Received> polls = new CopyOnWriteArrayList<>();
 
     public FakeRevocationResource() {
         this("aauth-resource.json");
@@ -57,6 +61,26 @@ public final class FakeRevocationResource implements AutoCloseable {
         return received;
     }
 
+    /** Signed GETs received on the pending URL after a deferred answer. */
+    public List<Received> polls() {
+        return polls;
+    }
+
+    /** Hold every revocation for {@code newDelay} before answering. */
+    public FakeRevocationResource delaying(Duration newDelay) {
+        delay = newDelay;
+        return this;
+    }
+
+    /**
+     * Answer revocations with 202 and {@code Location: location}; a GET there gets the
+     * configured status and body.
+     */
+    public FakeRevocationResource deferringTo(String location) {
+        deferTo = location;
+        return this;
+    }
+
     public FakeRevocationResource withoutEndpoint() {
         advertiseEndpoint = false;
         return this;
@@ -80,10 +104,27 @@ public final class FakeRevocationResource implements AutoCloseable {
     private void revoke(HttpExchange exchange) throws IOException {
         Map<String, String> headers = new LinkedHashMap<>();
         exchange.getRequestHeaders().forEach((name, values) -> headers.put(name.toLowerCase(), values.getFirst()));
-        received.add(new Received(
+        Received request = new Received(
                 origin() + exchange.getRequestURI(),
                 headers,
-                exchange.getRequestBody().readAllBytes()));
+                exchange.getRequestBody().readAllBytes());
+        if ("GET".equals(exchange.getRequestMethod())) {
+            polls.add(request);
+            respond(exchange, status, responseBody);
+            return;
+        }
+        received.add(request);
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (deferTo != null) {
+            exchange.getResponseHeaders().add("Location", deferTo);
+            exchange.getResponseHeaders().add("Retry-After", "0");
+            respond(exchange, 202, "{\"status\":\"pending\"}");
+            return;
+        }
         respond(exchange, status, responseBody);
     }
 

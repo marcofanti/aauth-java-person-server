@@ -203,3 +203,6 @@ and the derived `aauth-java-person-server.pptx`.
 - **Expired revocation and token records are purged** (2026-10-13): the stores drop rows 5
   minutes after `exp` (§11.12.4 allows discarding after `exp`), on a write and at most once a
   minute. The Python reference (draft-10) has no revocation records, so there is no parity counterpart.
+- **Deferred revocation** (2026-10-13): `/revoke` answers 202 once the cascade outlasts its
+  20 s hold (or `Prefer: wait`), and the PS follows downstream 202s instead of counting them as
+  `revocation_unavailable` (§11.12.3). Pending revocations are kept in memory only.

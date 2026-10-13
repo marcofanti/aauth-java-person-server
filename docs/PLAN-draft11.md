@@ -112,7 +112,7 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 | PS-111 agent-token cascade | done | by the agent's `sub`: live person tokens (at their resource and at each AS they were presented to) and PS-issued auth tokens |
 | PS-112 resource-token revocation | done | `revoked_resource_token`; open pendings started for it fail with polling error `revoked` |
 | PS-113 outbound revocation | done | signed `jwks_uri;id=<PS>;dwk=aauth-person.json`, body coverage; endpoint from `aauth-resource.json` (resources) or `aauth-access.json` (ASes) |
-| PS-114 downstream outcomes | done | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable → `revocation_unavailable`; repeats retry; an AS's `downstream` array is logged |
+| PS-114 downstream outcomes | done | no endpoint / `unsupported_iss` → `revocation_unsupported`; unreachable, 5xx, unparseable, or a 202 still pending after 45 s → `revocation_unavailable`; repeats retry; an AS's `downstream` array is logged |
 | PS-115 records | done | agent tokens `(iss, jti, sub, exp)`; person tokens with presentations and upstream `(iss, jti)`; PS-issued auth tokens; agent revocation times by `sub`. The cascade follows person tokens issued on a revoked token as `upstream_token` |
 | PS-103 JWT checks | done | library: `exp` without tolerance, `typ` first, person-token `exp − iat` ≤ 1h; PS: presented auth tokens need `iat` and `exp − iat` ≤ 1h. The optional future-`iat` `clock_skew` is not applied |
 | PS-104 uppercase agent identifiers | done (PS) | agent ids compared exactly, no case folding; library `Identifiers` still rejects uppercase in `parent_agent` (library finding) |
@@ -152,10 +152,16 @@ identical to the reference. Known gap: draft-11 mission creation approves immedi
 deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
 `AAUTH_PS_MISSION_LIFETIME_SECONDS` sets `expires_at` (unset = no expiry).
 
-Revocation (2026-10-12): the PS answers synchronously. Downstream calls run in parallel with
-5-second timeouts, so the cascade finishes inside the ~20 s hold §11.12.3 suggests, and the
-PS never answers 202. A downstream 202 counts as `revocation_unavailable` (the PS does not poll
-it); a repeated revocation retries. Records are purged after `exp` (see "Record expiry").
+Revocation (2026-10-12, deferred completion 2026-10-13): downstream calls run in parallel with
+5-second HTTP timeouts. A downstream 202 is followed: the PS polls its same-origin pending URL with
+a signed GET, respecting `Retry-After` (+5 s per 429), for up to 45 s before counting it as
+`revocation_unavailable`. `/revoke` holds until the cascade is terminal, for at most 20 s or the
+caller's `Prefer: wait`, then answers 202 with `Location: /revoke/pending/{id}`, `Retry-After: 0`
+and `{"status":"pending"}`. `GET /revoke/pending/{id}` is verified like `/revoke`; a poll from
+another identity, an unknown id, or an id already answered gets 404. Pending revocations are in
+memory (10-minute retention), so a poll after a restart or on another instance gets 404 and the
+caller may revoke again. A revocation with nothing downstream never answers 202. A repeated
+revocation retries. Records are purged after `exp` (see "Record expiry").
 Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker's in-place writes
 (`verifiedResourceClaims`, `tokenAgentCnfJwk`, `evaluatorReason`, clarification rounds) were lost
 in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
