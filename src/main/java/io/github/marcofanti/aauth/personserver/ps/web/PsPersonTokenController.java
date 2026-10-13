@@ -37,7 +37,8 @@ public class PsPersonTokenController {
                         ps.personTokenIssuer(),
                         ps.agentJwksResolver(),
                         resource -> SyncHttp.fetchJson(resource + "/.well-known/aauth-resource.json"),
-                        ps.upstreamTokens()),
+                        ps.upstreamTokens(),
+                        ps.revocations()),
                 settings.userId(),
                 settings.autoApproveToken());
     }

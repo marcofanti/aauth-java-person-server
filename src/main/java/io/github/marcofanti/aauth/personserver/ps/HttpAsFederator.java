@@ -31,17 +31,24 @@ public final class HttpAsFederator implements AsFederator {
     private static final Logger log = LoggerFactory.getLogger(HttpAsFederator.class);
     private static final String AUTH_TYPE = "aa-auth+jwt";
     private static final String PERSON_TYPE = "aa-person+jwt";
-    private static final Duration DEADLINE = Duration.ofSeconds(20);
+    private static final Duration DEFAULT_DEADLINE = Duration.ofSeconds(20);
     private static final long MAX_POLL_WAIT_SECONDS = 5;
 
     private final AsFederator draft10;
     private final ServerHttp http;
     private final PersonTokenLedger personTokens;
+    private final Duration deadline;
 
     public HttpAsFederator(AsFederator draft10, ServerHttp http, PersonTokenLedger personTokens) {
+        this(draft10, http, personTokens, DEFAULT_DEADLINE);
+    }
+
+    /** {@code deadline} bounds the whole exchange with the AS, deferred responses included. */
+    HttpAsFederator(AsFederator draft10, ServerHttp http, PersonTokenLedger personTokens, Duration deadline) {
         this.draft10 = draft10;
         this.http = http;
         this.personTokens = personTokens;
+        this.deadline = deadline;
     }
 
     @Override
@@ -65,6 +72,9 @@ public final class HttpAsFederator implements AsFederator {
     @Override
     public AuthTokenResponse federateDraft11(TokenRequest request, Map<String, Object> resourceClaims) {
         AccessServer as = discover(IssuerUrls.normalizeAudClaim(resourceClaims.get("aud")));
+        // Recorded before sending: once the AS holds the token, revoking it must reach the AS
+        // whatever this exchange returns (§11.12.4).
+        recordPresentation(request, as.issuer());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("resource_token", request.resourceToken());
         body.put("agent_token", request.draft11().agentToken());
@@ -72,10 +82,10 @@ public final class HttpAsFederator implements AsFederator {
         if (request.upstreamToken() != null) {
             body.put("upstream_token", request.upstreamToken());
         }
-        Instant deadline = Instant.now().plus(DEADLINE);
+        Instant giveUpAt = Instant.now().plus(deadline);
         HttpResponse<String> response = call(() -> http.post(as.authTokenEndpoint(), body), as);
         while (response.statusCode() == 202) {
-            response = followDeferred(response, as, deadline);
+            response = followDeferred(response, as, giveUpAt);
         }
         if (response.statusCode() != 200) {
             throw relayed(response, as);
@@ -85,31 +95,37 @@ public final class HttpAsFederator implements AsFederator {
             throw unreachable(as, "the AS answered 200 without an auth_token");
         }
         long exp = verifyDelivery(authToken, as, request, resourceClaims);
-        recordPresentation(request.draft11().presentedToken(), as.issuer());
         return new AuthTokenResponse(
                 authToken, (int) Math.max(0, exp - Instant.now().getEpochSecond()));
     }
 
-    private static AccessServer discover(String asIssuer) {
+    private AccessServer discover(String asIssuer) {
         try {
-            Map<String, Object> metadata = SyncHttp.fetchJson(asIssuer + "/.well-known/aauth-access.json");
+            Map<String, Object> metadata = http.fetchJson(asIssuer + "/.well-known/aauth-access.json");
             if (!(metadata.get("auth_token_endpoint") instanceof String endpoint)
                     || !(metadata.get("jwks_uri") instanceof String jwksUri)) {
                 throw unreachable(asIssuer, "AS metadata lacks auth_token_endpoint or jwks_uri");
             }
-            return new AccessServer(asIssuer, endpoint, SyncHttp.fetchJson(jwksUri));
+            return new AccessServer(asIssuer, endpoint, http.fetchJson(jwksUri));
         } catch (IllegalArgumentException e) {
             throw unreachable(asIssuer, "AS metadata unavailable: " + e.getMessage());
         }
     }
 
     /** §9.1.2 / §9.2: answer {@code requirement=claims}, otherwise poll the pending URL. */
-    private HttpResponse<String> followDeferred(HttpResponse<String> response, AccessServer as, Instant deadline) {
+    private HttpResponse<String> followDeferred(HttpResponse<String> response, AccessServer as, Instant giveUpAt) {
         String location = response.headers().firstValue("Location").orElse(null);
         if (location == null) {
             throw unreachable(as, "the AS answered 202 without a Location");
         }
-        String pendingUrl = URI.create(as.authTokenEndpoint()).resolve(location).toString();
+        URI pending = URI.create(as.authTokenEndpoint()).resolve(location);
+        if (!sameOrigin(pending, URI.create(as.authTokenEndpoint()))) {
+            throw unreachable(as, "the AS pending URL is not on the AS's origin");
+        }
+        if (Instant.now().isAfter(giveUpAt)) {
+            throw unreachable(as, "the AS did not finish within " + deadline.toSeconds() + " seconds");
+        }
+        String pendingUrl = pending.toString();
         String requirement = response.headers().firstValue("AAuth-Requirement").orElse("");
         if (requirement.contains("requirement=claims")) {
             return call(() -> http.post(pendingUrl, claimsFor(response)), as);
@@ -118,8 +134,8 @@ public final class HttpAsFederator implements AsFederator {
                 .firstValue("Retry-After")
                 .map(HttpAsFederator::seconds)
                 .orElse(1L);
-        if (Instant.now().plusSeconds(wait).isAfter(deadline)) {
-            throw unreachable(as, "the AS did not finish within " + DEADLINE.toSeconds() + " seconds");
+        if (Instant.now().plusSeconds(wait).isAfter(giveUpAt)) {
+            throw unreachable(as, "the AS did not finish within " + deadline.toSeconds() + " seconds");
         }
         sleep(Math.min(Math.max(wait, 1), MAX_POLL_WAIT_SECONDS));
         return call(() -> http.get(pendingUrl), as);
@@ -133,6 +149,12 @@ public final class HttpAsFederator implements AsFederator {
         Object requested = Json.readMap(response.body()).get("required_claims");
         log.info("AS requested claims {}; this PS releases none", requested);
         return Map.of();
+    }
+
+    private static boolean sameOrigin(URI a, URI b) {
+        return Objects.equals(a.getScheme(), b.getScheme())
+                && Objects.equals(a.getHost(), b.getHost())
+                && a.getPort() == b.getPort();
     }
 
     private static long seconds(String retryAfter) {
@@ -222,10 +244,10 @@ public final class HttpAsFederator implements AsFederator {
                 : Set.of();
     }
 
-    private void recordPresentation(String presentedToken, String asIssuer) {
-        Jwts.Decoded presented = Jwts.parse(presentedToken);
+    private void recordPresentation(TokenRequest request, String asIssuer) {
+        Jwts.Decoded presented = Jwts.parse(request.draft11().presentedToken());
         if (PERSON_TYPE.equals(presented.header().get("typ")) && presented.claim("jti") != null) {
-            personTokens.recordPresentation(presented.claim("jti"), asIssuer);
+            personTokens.recordPresentation(presented.claim("jti"), asIssuer, request.agentJkt());
         }
     }
 

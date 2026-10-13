@@ -19,11 +19,14 @@ public interface PersonTokenLedger {
 
     Issued findByJti(String jti);
 
-    /** Record that the person token {@code jti} was presented to the AS {@code asIssuer} (§11.12.4). */
-    void recordPresentation(String jti, String asIssuer);
+    /** A person token presented to an AS on behalf of the agent holding key {@code agentJkt}. */
+    record Presentation(String asIssuer, String agentJkt) {}
 
-    /** The ASes a person token was presented to, which a revocation of it must reach. */
-    List<String> presentedTo(String jti);
+    /** Record that person token {@code jti} was presented to the AS {@code asIssuer} (§9.1.1, §11.12.4). */
+    void recordPresentation(String jti, String asIssuer, String agentJkt);
+
+    /** Where a person token was presented, which a revocation of it must reach. */
+    List<Presentation> presentations(String jti);
 
     /** Record that person token {@code jti} was issued on the upstream token {@code (iss, jti)} (§11.12.4). */
     void recordUpstream(String jti, String upstreamIss, String upstreamJti);

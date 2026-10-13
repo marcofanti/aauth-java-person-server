@@ -204,6 +204,8 @@ class PsAuthTokenDraft11HttpTest {
         assertThat(((Number) json(result).get("expires_in")).longValue())
                 .isPositive()
                 .isLessThanOrEqualTo(3600);
+        // §11.12.3: a resource whose token this PS verified may now revoke its resource tokens.
+        assertThat(ps.revocations().isKnownResourceIssuer(RESOURCE_ISS)).isTrue();
     }
 
     @Test

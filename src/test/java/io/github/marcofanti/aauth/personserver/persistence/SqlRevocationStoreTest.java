@@ -75,13 +75,13 @@ class SqlRevocationStoreTest {
         store.saveRecord(record);
 
         assertThat(store.getRecord(pendingId).verifiedResourceClaims).containsEntry("jti", "rt-1");
-        assertThat(store.openPendingForResourceToken("https://rs.example/", "rt-1"))
+        assertThat(store.openPending(open -> open.startedFor("https://rs.example/", "rt-1")))
                 .isEqualTo(List.of(pendingId));
-        assertThat(store.openPendingForResourceToken("https://rs.example", "rt-2"))
+        assertThat(store.openPending(open -> open.startedFor("https://rs.example", "rt-2")))
                 .isEmpty();
 
         store.failPending(pendingId, "revoked");
-        assertThat(store.openPendingForResourceToken("https://rs.example", "rt-1"))
+        assertThat(store.openPending(open -> open.startedFor("https://rs.example", "rt-1")))
                 .isEmpty();
     }
 
@@ -113,5 +113,16 @@ class SqlRevocationStoreTest {
 
         assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> store.getPending(pendingId, false)))
                 .isInstanceOf(io.github.marcofanti.aauth.personserver.ps.PendingExpiredException.class);
+    }
+
+    @Test
+    void knownResourceIssuersAreNormalized() {
+        forBoth(store -> {
+            assertThat(store.isKnownResourceIssuer("https://rs.example")).isFalse();
+            store.recordResourceIssuer("https://rs.example/");
+            store.recordResourceIssuer("https://rs.example");
+            assertThat(store.isKnownResourceIssuer("https://rs.example")).isTrue();
+            assertThat(store.isKnownResourceIssuer("https://rs.example/")).isTrue();
+        });
     }
 }

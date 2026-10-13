@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /** In-memory {@link PendingRequestStore}. */
 public final class MemoryPendingStore implements PendingRequestStore {
@@ -348,13 +349,13 @@ public final class MemoryPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public synchronized List<String> openPendingForResourceToken(String iss, String jti) {
+    public synchronized List<String> openPending(Predicate<PendingRecord> filter) {
         List<String> out = new ArrayList<>();
         for (PendingRecord record : backend.pending.values()) {
             if (record.gone || record.terminal != null || record.failure != null) {
                 continue;
             }
-            if (record.startedFor(iss, jti)) {
+            if (filter.test(record)) {
                 out.add(record.pendingId);
             }
         }

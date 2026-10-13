@@ -75,6 +75,7 @@ final class Draft11Checks {
         if (!psOrigin.equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("ps"))))) {
             throw new ProblemError(400, "invalid_resource_token", "resource token ps does not name this PS");
         }
+        revocations.recordResourceIssuer(String.valueOf(claims.get("iss")));
         return claims;
     }
 

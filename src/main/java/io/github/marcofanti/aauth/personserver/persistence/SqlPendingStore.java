@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -387,13 +388,13 @@ public final class SqlPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public List<String> openPendingForResourceToken(String iss, String jti) {
+    public List<String> openPending(Predicate<PendingRecord> filter) {
         List<String> rows = jdbc.query(
                 "SELECT record_json FROM ps_pending WHERE is_open = TRUE", (rs, rowNum) -> rs.getString("record_json"));
         List<String> out = new ArrayList<>();
         for (String json : rows) {
             PendingRecord record = PendingSerde.recordFromDict(Json.readMap(json));
-            if (isOpen(record) && record.startedFor(iss, jti)) {
+            if (isOpen(record) && filter.test(record)) {
                 out.add(record.pendingId);
             }
         }

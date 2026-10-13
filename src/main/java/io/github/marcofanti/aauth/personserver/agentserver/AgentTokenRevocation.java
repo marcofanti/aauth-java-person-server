@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +24,8 @@ import org.slf4j.LoggerFactory;
 public final class AgentTokenRevocation {
 
     private static final Logger log = LoggerFactory.getLogger(AgentTokenRevocation.class);
+    private static final ExecutorService SENDERS = Executors.newVirtualThreadPerTaskExecutor();
+    private static final long TIMEOUT_SECONDS = 20;
 
     private record Issued(String jti, String agentId, String ps, long exp) {}
 
@@ -54,12 +59,20 @@ public final class AgentTokenRevocation {
         List<CompletableFuture<Outcome>> revocations = new ArrayList<>();
         for (Issued token : issued.values()) {
             if (token.agentId().equals(agentId)) {
-                revocations.add(CompletableFuture.supplyAsync(() -> {
-                    Outcome outcome =
-                            sender.send(token.ps(), RevocationSender.PERSON_METADATA, token.jti(), token.exp());
-                    log.info("agent token {} of {} revoked at {}: {}", token.jti(), agentId, token.ps(), outcome);
-                    return outcome;
-                }));
+                revocations.add(CompletableFuture.supplyAsync(
+                                () -> {
+                                    Outcome outcome = sender.send(
+                                            token.ps(), RevocationSender.PERSON_METADATA, token.jti(), token.exp());
+                                    log.info(
+                                            "agent token {} of {} revoked at {}: {}",
+                                            token.jti(),
+                                            agentId,
+                                            token.ps(),
+                                            outcome);
+                                    return outcome;
+                                },
+                                SENDERS)
+                        .completeOnTimeout(Outcome.REVOCATION_UNAVAILABLE, TIMEOUT_SECONDS, TimeUnit.SECONDS));
             }
         }
         return revocations;

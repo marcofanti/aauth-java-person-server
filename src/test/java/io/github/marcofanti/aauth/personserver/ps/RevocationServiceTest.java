@@ -132,7 +132,7 @@ class RevocationServiceTest {
         PendingDeniedException denied =
                 catchThrowableOfType(PendingDeniedException.class, () -> pending.getPending(pendingId, false));
         assertThat(denied.reason()).isEqualTo("revoked");
-        assertThat(pending.openPendingForResourceToken(RS, "rt-2")).containsExactly(unrelated);
+        assertThat(pending.openPending(record -> record.startedFor(RS, "rt-2"))).containsExactly(unrelated);
         assertThat(sent).isEmpty();
     }
 
@@ -165,8 +165,8 @@ class RevocationServiceTest {
     void personTokensAreAlsoRevokedAtEachAccessServerTheyWerePresentedTo() {
         revocations.recordAgentToken(AP, "agent-jti", AGENT, NOW + 600);
         personTokens.recordIssued(new PersonTokenLedger.Issued("pt-1", AGENT, "user", RS, "sub", NOW + 300));
-        personTokens.recordPresentation("pt-1", "https://as.example/");
-        personTokens.recordPresentation("pt-1", "https://as.example");
+        personTokens.recordPresentation("pt-1", "https://as.example/", "jkt");
+        personTokens.recordPresentation("pt-1", "https://as.example", "jkt");
 
         service.revoke(AP, CallerKind.AGENT_PROVIDER, "agent-jti", NOW + 600);
 
@@ -198,5 +198,26 @@ class RevocationServiceTest {
         assertThat(revocations.isRevoked(PS, "pt-4")).isTrue();
         assertThat(sent).hasSize(5);
         assertThat(revocations.agentRevokedAt(AGENT)).isBetween(NOW, NOW + 5);
+    }
+
+    @Test
+    void agentRevocationEndsTheAgentsPendingsAndThoseRelyingOnRevokedTokens() {
+        revocations.recordAgentToken(AP, "agent-jti", AGENT, NOW + 600);
+        personTokens.recordIssued(new PersonTokenLedger.Issued("pt-1", AGENT, "user", RS, "sub", NOW + 300));
+        String own = pending.createPending(TokenRequest.builder(AGENT, "rt").build());
+        String chained = pending.createPending(TokenRequest.builder("aauth:chain@rs", "rt2")
+                .upstreamToken(unsignedJwt(Map.of("jti", "pt-1")))
+                .build());
+        String unrelated = pending.createPending(
+                TokenRequest.builder("aauth:other@ap", "rt3").build());
+
+        service.revoke(AP, CallerKind.AGENT_PROVIDER, "agent-jti", NOW + 600);
+
+        for (String revoked : List.of(own, chained)) {
+            PendingDeniedException denied =
+                    catchThrowableOfType(PendingDeniedException.class, () -> pending.getPending(revoked, false));
+            assertThat(denied.reason()).isEqualTo("revoked");
+        }
+        assertThat(pending.getPending(unrelated, false)).isNotNull();
     }
 }

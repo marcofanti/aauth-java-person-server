@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps;
 import io.github.marcofanti.aauth.TokenException;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
+import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
 import io.github.marcofanti.aauth.tokens.PersonTokens;
 import java.util.Locale;
@@ -121,8 +122,11 @@ public final class UpstreamTokens {
         }
         String issuer = MissionUtils.stripTrailingSlash(iss);
         for (PersonTokenLedger.Issued issued : records.personTokens().findBySubject(aud, sub)) {
-            if (records.personTokens().presentedTo(issued.jti()).contains(issuer)) {
-                return accessServerJwks.apply(issuer);
+            for (PersonTokenLedger.Presentation presentation :
+                    records.personTokens().presentations(issued.jti())) {
+                if (presentation.asIssuer().equals(issuer)) {
+                    return accessServerJwks.apply(issuer);
+                }
             }
         }
         return null;
@@ -162,10 +166,13 @@ public final class UpstreamTokens {
             }
             throw invalid("this PS holds no record of the upstream auth token");
         }
+        // Several agents of one person share (aud, sub); the AS bound its token to the presenting
+        // agent's key, so the presentation made with that key identifies the agent.
         String issuer = MissionUtils.stripTrailingSlash(String.valueOf(claims.get("iss")));
+        PersonTokenLedger.Presentation expected = new PersonTokenLedger.Presentation(issuer, cnfThumbprint(claims));
         PersonTokenLedger.Issued latest = null;
         for (PersonTokenLedger.Issued issued : records.personTokens().findBySubject(aud, sub)) {
-            if (records.personTokens().presentedTo(issued.jti()).contains(issuer)
+            if (records.personTokens().presentations(issued.jti()).contains(expected)
                     && (latest == null || issued.exp() > latest.exp())) {
                 latest = issued;
             }
@@ -174,6 +181,15 @@ public final class UpstreamTokens {
             throw invalid("this PS cannot identify the agent the upstream auth token was issued to");
         }
         return latest;
+    }
+
+    private static String cnfThumbprint(Map<String, Object> claims) {
+        if (claims.get("cnf") instanceof Map<?, ?> cnf && cnf.get("jwk") instanceof Map<?, ?> jwk) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> key = (Map<String, Object>) jwk;
+            return Jwk.thumbprint(key);
+        }
+        return null;
     }
 
     private boolean isSelf(String iss) {

@@ -435,7 +435,9 @@ class PsCallChainingHttpTest {
     @Test
     void anAuthTokenFromAnAccessServerThePsPresentedToIsAnUpstreamToken() throws Exception {
         String person = upstreamPersonToken(null, null);
-        ps.personTokenLedger().recordPresentation(Jwts.parse(person).claim("jti"), ACCESS_SERVER.origin());
+        ps.personTokenLedger()
+                .recordPresentation(
+                        Jwts.parse(person).claim("jti"), ACCESS_SERVER.origin(), Jwk.thumbprint(jwk(CALLER_KEY)));
 
         MvcResult result = downstreamPersonToken(accessServerAuthToken(person));
 
@@ -469,7 +471,9 @@ class PsCallChainingHttpTest {
     @Test
     void anUpstreamAuthTokenNamingAnotherPersonServerIsInvalid() throws Exception {
         String person = upstreamPersonToken(null, null);
-        ps.personTokenLedger().recordPresentation(Jwts.parse(person).claim("jti"), ACCESS_SERVER.origin());
+        ps.personTokenLedger()
+                .recordPresentation(
+                        Jwts.parse(person).claim("jti"), ACCESS_SERVER.origin(), Jwk.thumbprint(jwk(CALLER_KEY)));
         String foreignPs = AuthTokens.create(AuthTokens.Spec.builder(
                         ACCESS_SERVER.origin(),
                         INTERMEDIARY.origin(),
@@ -502,5 +506,52 @@ class PsCallChainingHttpTest {
                 .isEqualTo(200);
         assertThat(Jwts.parse((String) json(result).get("auth_token")).numericClaim("exp"))
                 .isLessThanOrEqualTo(Jwts.parse(shortUpstream).numericClaim("exp"));
+    }
+
+    @Test
+    void anAccessServerTokenResolvesToTheAgentWhoseKeyItBinds() throws Exception {
+        // Two agents of the same person share (aud, sub); only the revoked one presented to the AS.
+        String revokedCaller = "aauth:revoked.2@agent-server.example";
+        KeyPair revokedKey = KeyPairs.generateEd25519();
+        String revokedPerson = ps.personTokenIssuer()
+                .issue(
+                        new PersonTokenRequest(
+                                revokedCaller,
+                                jwk(revokedKey),
+                                INTERMEDIARY.origin(),
+                                null,
+                                null,
+                                inOneHour(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null),
+                        "user")
+                .personToken();
+        ps.personTokenLedger()
+                .recordPresentation(
+                        Jwts.parse(revokedPerson).claim("jti"),
+                        ACCESS_SERVER.origin(),
+                        Jwk.thumbprint(jwk(revokedKey)));
+        String liveCallersToken = upstreamPersonToken(null, Instant.now().getEpochSecond() + 7200);
+        ps.personTokenLedger()
+                .recordPresentation(
+                        Jwts.parse(liveCallersToken).claim("jti"),
+                        ACCESS_SERVER.origin(),
+                        Jwk.thumbprint(jwk(CALLER_KEY)));
+        ps.revocations().recordAgentRevocation(revokedCaller, Instant.now().getEpochSecond() + 5);
+        String asToken = AuthTokens.create(AuthTokens.Spec.builder(
+                        ACCESS_SERVER.origin(),
+                        INTERMEDIARY.origin(),
+                        Jwts.parse(revokedPerson).claim("sub"),
+                        PS_ORIGIN)
+                .cnfJwk(jwk(revokedKey))
+                .signingKey(ACCESS_SERVER.key().getPrivate(), FakeAccessServer.KID)
+                .exp(Jwts.parse(revokedPerson).numericClaim("exp"))
+                .dwk("aauth-access.json")
+                .build());
+
+        assertProblem(downstreamPersonToken(asToken), 400, ProblemError.REVOKED_UPSTREAM_TOKEN);
     }
 }

@@ -57,6 +57,34 @@ public final class ServerHttp {
                 HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofByteArray(bytes)), headers);
     }
 
+    /**
+     * Unsigned GET of a JSON object (metadata, JWKS) with the same bounded timeouts and no
+     * redirects, so a slow or hostile peer cannot hold a thread for long.
+     *
+     * @throws IllegalArgumentException when the peer is unreachable, answers non-2xx, or sends no JSON object
+     */
+    public Map<String, Object> fetchJson(String url) {
+        HttpResponse<String> response;
+        try {
+            response = client.send(
+                    HttpRequest.newBuilder(URI.create(url))
+                            .header("Accept", JSON)
+                            .timeout(TIMEOUT)
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+        } catch (IOException e) {
+            throw new IllegalArgumentException("failed to fetch " + url + ": " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalArgumentException("interrupted fetching " + url, e);
+        }
+        if (response.statusCode() / 100 != 2) {
+            throw new IllegalArgumentException("HTTP " + response.statusCode() + " fetching " + url);
+        }
+        return Json.readMap(response.body());
+    }
+
     /** Signed GET with no body (pending-URL polling, §11.8). */
     public HttpResponse<String> get(String url) throws IOException, InterruptedException {
         return send(HttpRequest.newBuilder(URI.create(url)).GET(), signedHeaders("GET", url, null));

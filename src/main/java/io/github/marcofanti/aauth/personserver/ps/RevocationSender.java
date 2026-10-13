@@ -63,9 +63,9 @@ public final class RevocationSender {
         }
     }
 
-    private static String revocationEndpoint(String recipient, String metadata) {
+    private String revocationEndpoint(String recipient, String metadata) {
         Map<String, Object> document =
-                SyncHttp.fetchJson(MissionUtils.stripTrailingSlash(recipient) + "/.well-known/" + metadata);
+                http.fetchJson(MissionUtils.stripTrailingSlash(recipient) + "/.well-known/" + metadata);
         return document.get("revocation_endpoint") instanceof String uri && !uri.isBlank() ? uri : null;
     }
 

@@ -7,6 +7,11 @@ package io.github.marcofanti.aauth.personserver.ps;
  */
 public interface RevocationStore {
 
+    /** Remember a resource whose resource token this PS verified; only those may revoke (§11.12.3). */
+    void recordResourceIssuer(String iss);
+
+    boolean isKnownResourceIssuer(String iss);
+
     /** Record a revocation; repeating it is a no-op (§11.12.3 idempotence). */
     void revoke(String iss, String jti, long exp);
 

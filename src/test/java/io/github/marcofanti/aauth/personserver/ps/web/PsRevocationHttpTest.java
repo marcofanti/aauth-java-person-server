@@ -103,6 +103,11 @@ class PsRevocationHttpTest {
     @Autowired
     private PsContainer ps;
 
+    @org.junit.jupiter.api.BeforeEach
+    void theResourceHasIssuedTokensToThisPs() {
+        ps.revocations().recordResourceIssuer(RESOURCE.origin());
+    }
+
     private static long inOneHour() {
         return Instant.now().getEpochSecond() + 3600;
     }
@@ -235,6 +240,7 @@ class PsRevocationHttpTest {
 
     @Test
     void unresolvableIssuerKeysAreUnknownKey() throws Exception {
+        ps.revocations().recordResourceIssuer("https://unknown-rs.example");
         MvcResult result = send(
                 "/revoke",
                 revocation("rt-1"),
@@ -303,5 +309,16 @@ class PsRevocationHttpTest {
                 Instant.now().getEpochSecond() + 300);
         assertSignatureError(result, "clock_skew");
         assertThat(ps.revocations().isRevoked(RESOURCE.origin(), "rt-ahead")).isFalse();
+    }
+
+    @Test
+    void aResourceThisPsHoldsNoTokensFromIsUnsupportedIssBeforeAnyFetch() throws Exception {
+        MvcResult result = send(
+                "/revoke",
+                revocation("rt-1"),
+                RS_KEY,
+                new SignatureScheme.JwksUri("http://169.254.169.254", "aauth-resource.json", "rs-kid"),
+                BODY_COMPONENTS);
+        assertProblem(result, 403, "unsupported_iss");
     }
 }

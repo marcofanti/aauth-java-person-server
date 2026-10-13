@@ -77,6 +77,38 @@ public final class PendingRecord {
                         .equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("iss"))));
     }
 
+    /**
+     * Whether this pending relies on one of {@code jtis} (tokens this PS issued) as its presented
+     * token or its upstream token, so revoking that token ends it (§11.12.4).
+     */
+    public boolean dependsOn(java.util.Set<String> jtis) {
+        TokenRequest request = tokenRequest;
+        if (request != null) {
+            if (request.draft11() != null
+                    && jtis.contains(jtiOf(request.draft11().presentedToken()))) {
+                return true;
+            }
+            if (jtis.contains(jtiOf(request.upstreamToken()))) {
+                return true;
+            }
+        }
+        PersonTokenRequest personRequest = personTokenRequest;
+        return personRequest != null
+                && personRequest.upstream() != null
+                && jtis.contains(personRequest.upstream().jti());
+    }
+
+    private static String jtiOf(String token) {
+        if (token == null) {
+            return null;
+        }
+        try {
+            return io.github.marcofanti.aauth.signing.Jwts.parse(token).claim("jti");
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Agent id owning this pending row, from whichever request field is present. */
     public String agentId() {
         if (tokenRequest != null) {

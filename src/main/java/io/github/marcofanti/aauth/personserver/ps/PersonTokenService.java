@@ -54,7 +54,8 @@ public final class PersonTokenService {
             PersonTokenIssuer issuer,
             Function<String, Map<String, Object>> agentJwks,
             Function<String, Map<String, Object>> resourceMetadata,
-            UpstreamTokens upstreamTokens) {}
+            UpstreamTokens upstreamTokens,
+            RevocationStore revocations) {}
 
     private final Deps deps;
     private final String person;
@@ -172,6 +173,12 @@ public final class PersonTokenService {
                     : ProblemError.INVALID_SUBAGENT_TOKEN;
             throw new ProblemError(400, code, message);
         }
+        String subIss = String.valueOf(claims.get("iss"));
+        String subJti = claims.get("jti") instanceof String jti ? jti : null;
+        if (deps.revocations().isRevoked(subIss, subJti)) {
+            throw new ProblemError(
+                    400, ProblemError.REVOKED_SUBAGENT_TOKEN, "the agent provider has revoked this subagent_token");
+        }
         if (!Objects.equals(claims.get("parent_agent"), agent.agentId())) {
             throw new ProblemError(
                     400, ProblemError.INVALID_SUBAGENT_TOKEN, "subagent_token's parent_agent is not the signing agent");
@@ -187,6 +194,10 @@ public final class PersonTokenService {
         @SuppressWarnings("unchecked")
         Map<String, Object> subKey = (Map<String, Object>) jwk;
         Long subExp = claims.get("exp") instanceof Number n ? n.longValue() : null;
+        if (subJti != null && subExp != null) {
+            // Remembered like an agent token, so revoking it cascades to the sub-agent (§11.12.4).
+            deps.revocations().recordAgentToken(subIss, subJti, String.valueOf(claims.get("sub")), subExp);
+        }
         return new Holder(String.valueOf(claims.get("sub")), subKey, earliest(agent.agentTokenExp(), subExp));
     }
 

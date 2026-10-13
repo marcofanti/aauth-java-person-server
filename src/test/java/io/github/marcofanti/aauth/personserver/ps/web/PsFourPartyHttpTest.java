@@ -11,6 +11,7 @@ import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.FakeAccessServer;
 import io.github.marcofanti.aauth.personserver.ps.FakeAccessServer.Answer;
 import io.github.marcofanti.aauth.personserver.ps.PendingDeniedException;
+import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
@@ -222,8 +223,9 @@ class PsFourPartyHttpTest {
                         .components())
                 .contains("content-type", "content-digest");
         assertThat(signedByThePs(call)).isTrue();
-        assertThat(ps.personTokenLedger().presentedTo(Jwts.parse(person).claim("jti")))
-                .containsExactly(AS.origin());
+        assertThat(ps.personTokenLedger().presentations(Jwts.parse(person).claim("jti")))
+                .containsExactly(
+                        new PersonTokenLedger.Presentation(AS.origin(), Jwk.thumbprint(jwk(AGENT_KEY, "eph"))));
     }
 
     @Test
@@ -349,5 +351,33 @@ class PsFourPartyHttpTest {
         PendingDeniedException failed = catchThrowableOfType(
                 PendingDeniedException.class, () -> ps.pendingStore().getPending(pendingId, false));
         assertThat(failed.reason()).isEqualTo(ProblemError.AS_UNREACHABLE);
+    }
+
+    @Test
+    void aPresentationIsRecordedEvenWhenTheAccessServerFails() throws Exception {
+        AS.answer(request -> new Answer(503, Map.of(), ""));
+        String person = personToken();
+        assertProblem(requestAuthToken(person), 502, ProblemError.AS_UNREACHABLE);
+        assertThat(ps.personTokenLedger().presentations(Jwts.parse(person).claim("jti")))
+                .extracting(PersonTokenLedger.Presentation::asIssuer)
+                .containsExactly(AS.origin());
+    }
+
+    @Test
+    void aPendingUrlOffTheAccessServersOriginIsRefused() throws Exception {
+        try (FakeAccessServer elsewhere = new FakeAccessServer()) {
+            AS.answer(request -> new Answer(
+                    202,
+                    Map.of(
+                            "Location",
+                            elsewhere.origin() + "/pending/x",
+                            "AAuth-Requirement",
+                            "requirement=approval",
+                            "Retry-After",
+                            "0"),
+                    ""));
+            assertProblem(requestAuthToken(personToken()), 502, ProblemError.AS_UNREACHABLE);
+            assertThat(elsewhere.received()).isEmpty();
+        }
     }
 }

@@ -174,3 +174,19 @@ and validates none (`AgentIds.isValidAgentId` has no callers), so nothing change
 interop rerun and `demo/demo.sh` pass on this branch. Left for the user:
 `aauth-full-java-demo` acceptance on draft-11 (that repo has uncommitted work), and the
 library release that lets this branch leave `0.3.0-SNAPSHOT`.
+
+Review hardening (2026-10-12): `/revoke` accepts resource revocations only from issuers whose
+resource tokens this PS has verified (403 `unsupported_iss` before any fetch). An agent-token
+revocation also fails that agent's open pendings and any pending relying on a token the cascade
+revoked (presented or upstream). Sub-agent tokens get the revoked check (`revoked_subagent_token`)
+and are recorded so their revocation cascades. Presentations to an AS are recorded before the
+request, with the agent's key thumbprint, so an AS-issued upstream token resolves to the agent its
+`cnf` names. The federation deadline is checked on every 202 and a pending `Location` must stay on
+the AS's origin. Outbound revocation and federation use 5-second timeouts with no redirects;
+cascades run on virtual threads, bounded at 20 s. SQL revocation and ledger writes are
+`ON CONFLICT DO NOTHING` upserts.
+
+Known, not fixed: the PS still fetches metadata and JWKS from URLs an authenticated agent can
+influence (resource `iss`, four-party `aud`, person-token `resource`), as the draft-10 code did
+for resource tokens; deployments should restrict egress. Memory-mode revocation records are not
+purged after `exp`.

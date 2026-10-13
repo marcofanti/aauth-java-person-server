@@ -122,6 +122,11 @@ public class PsRevocationController {
             return new Caller(iss, CallerKind.AGENT_PROVIDER);
         }
         if (RESOURCE_DWK.equals(dwk)) {
+            // §11.12.3 MAY: only resources whose tokens this PS has verified; anyone else gets
+            // unsupported_iss before the PS fetches anything on their say-so.
+            if (!ps.revocations().isKnownResourceIssuer(iss)) {
+                throw new ProblemError(403, "unsupported_iss", "this PS holds no resource tokens from " + iss);
+            }
             return new Caller(iss, CallerKind.RESOURCE);
         }
         throw new ProblemError(403, "unsupported_iss", "revocations come from agent providers and resources");

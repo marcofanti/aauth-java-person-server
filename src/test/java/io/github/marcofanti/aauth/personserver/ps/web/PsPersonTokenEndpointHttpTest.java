@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.RequestSigner;
 import io.github.marcofanti.aauth.signing.SignRequest;
@@ -310,5 +311,24 @@ class PsPersonTokenEndpointHttpTest {
         Map<String, Object> claims =
                 Jwts.parse((String) json(result).get("person_token")).payload();
         assertThat(((Map<?, ?>) claims.get("cnf")).get("jwk")).isEqualTo(jwk(OTHER_AGENT_KEY, "eph"));
+    }
+
+    @Test
+    void aRevokedSubagentTokenIsRevokedAndAnAcceptedOneIsRecorded() throws Exception {
+        approveFirstUse();
+        String sub = "aauth:planner.7f3c+search2@agent-server.example";
+        String subagent = agentToken(sub, OTHER_AGENT_KEY, Instant.now().getEpochSecond() + 3600, AGENT_ID);
+        String jti = Jwts.parse(subagent).claim("jti");
+
+        MvcResult accepted =
+                requestPersonToken(Map.of("resource", RESOURCE, "subagent_token", subagent), AGENT_KEY, agentToken());
+        assertThat(accepted.getResponse().getStatus()).isEqualTo(200);
+        assertThat(ps.revocations().agentSub(PS_ORIGIN, jti)).isEqualTo(sub);
+
+        ps.revocations().revoke(PS_ORIGIN, jti, Instant.now().getEpochSecond() + 3600);
+        MvcResult refused =
+                requestPersonToken(Map.of("resource", RESOURCE, "subagent_token", subagent), AGENT_KEY, agentToken());
+        assertThat(refused.getResponse().getStatus()).isEqualTo(400);
+        assertThat(json(refused)).containsEntry("error", ProblemError.REVOKED_SUBAGENT_TOKEN);
     }
 }

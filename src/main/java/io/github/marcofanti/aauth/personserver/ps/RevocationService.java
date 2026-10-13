@@ -1,6 +1,7 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -11,6 +12,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +61,11 @@ public final class RevocationService {
     private static final long MAX_TOKEN_LIFETIME_SECONDS = 86_400 + 300;
     private static final int MAX_PER_WINDOW = 100;
     private static final long WINDOW_SECONDS = 60;
+    private static final int MAX_TRACKED_ISSUERS = 1_000;
+    // Each downstream call is bounded by its own HTTP timeouts; this caps the whole cascade near
+    // the ~20 s a caller is expected to hold (§11.12.3).
+    private static final Duration CASCADE_TIMEOUT = Duration.ofSeconds(20);
+    private static final ExecutorService DOWNSTREAM = Executors.newVirtualThreadPerTaskExecutor();
 
     private record Window(long start, int count) {}
 
@@ -82,7 +91,7 @@ public final class RevocationService {
         throttle(iss, now);
         deps.revocations().revoke(iss, jti, exp);
         if (kind == CallerKind.RESOURCE) {
-            for (String pendingId : deps.pending().openPendingForResourceToken(iss, jti)) {
+            for (String pendingId : deps.pending().openPending(record -> record.startedFor(iss, jti))) {
                 deps.pending().failPending(pendingId, "revoked");
             }
             return List.of();
@@ -96,6 +105,9 @@ public final class RevocationService {
     }
 
     private void throttle(String iss, long now) {
+        if (windows.size() > MAX_TRACKED_ISSUERS) {
+            windows.values().removeIf(stale -> now - stale.start() >= WINDOW_SECONDS);
+        }
         Window window = windows.compute(
                 iss,
                 (key, current) -> current == null || now - current.start() >= WINDOW_SECONDS
@@ -135,19 +147,39 @@ public final class RevocationService {
             }
             Token token = new Token(issued.jti(), issued.exp());
             targets.add(new Target(issued.aud(), RevocationSender.RESOURCE_METADATA, token));
-            for (String accessServer : deps.personTokens().presentedTo(issued.jti())) {
-                targets.add(new Target(accessServer, RevocationSender.ACCESS_METADATA, token));
+            for (PersonTokenLedger.Presentation presentation :
+                    deps.personTokens().presentations(issued.jti())) {
+                targets.add(new Target(presentation.asIssuer(), RevocationSender.ACCESS_METADATA, token));
             }
             upstreams.add(issued.jti());
         }
-        List<CompletableFuture<Downstream>> calls = new ArrayList<>();
+        Set<String> revoked = new HashSet<>();
         for (Target target : targets) {
             deps.revocations()
                     .revoke(psOrigin, target.token().jti(), target.token().exp());
-            calls.add(CompletableFuture.supplyAsync(() -> new Downstream(
-                    target.recipient(),
-                    target.token().jti(),
-                    deps.sender().send(target.recipient(), target.metadata(), target.token()))));
+            revoked.add(target.token().jti());
+        }
+        // Requests still waiting on this agent, or on a token just revoked, end now rather than
+        // completing after the revocation (§11.12.4, polling error revoked).
+        for (String pendingId :
+                deps.pending().openPending(record -> agentSub.equals(record.agentId()) || record.dependsOn(revoked))) {
+            deps.pending().failPending(pendingId, "revoked");
+        }
+        List<CompletableFuture<Downstream>> calls = new ArrayList<>();
+        for (Target target : targets) {
+            calls.add(CompletableFuture.supplyAsync(
+                            () -> new Downstream(
+                                    target.recipient(),
+                                    target.token().jti(),
+                                    deps.sender().send(target.recipient(), target.metadata(), target.token())),
+                            DOWNSTREAM)
+                    .completeOnTimeout(
+                            new Downstream(
+                                    target.recipient(),
+                                    target.token().jti(),
+                                    RevocationSender.Outcome.REVOCATION_UNAVAILABLE),
+                            CASCADE_TIMEOUT.toSeconds(),
+                            TimeUnit.SECONDS));
         }
         List<Downstream> outcomes = new ArrayList<>();
         for (CompletableFuture<Downstream> call : calls) {

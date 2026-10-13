@@ -8,6 +8,7 @@ import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Backing store for pending URLs; not exposed as public REST
@@ -124,8 +125,8 @@ public interface PendingRequestStore {
     /** Pending rows awaiting user interaction, scoped to legal owner. */
     List<PendingRecord> listInteractionPendingForOwner(String ownerId);
 
-    /** Open pending ids started for the resource token {@code (iss, jti)} (§11.12.4). */
-    List<String> openPendingForResourceToken(String iss, String jti);
+    /** Ids of open pendings matching {@code filter} (revocation ends the ones that depend on a token). */
+    List<String> openPending(Predicate<PendingRecord> filter);
 
     /** All in-flight pending rows (not gone, not resolved, not failed). */
     List<Map<String, Object>> listOpenPendingForAdmin();

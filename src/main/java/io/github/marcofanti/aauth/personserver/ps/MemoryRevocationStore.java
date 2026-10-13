@@ -9,6 +9,17 @@ public final class MemoryRevocationStore implements RevocationStore {
     private final Map<String, Long> revoked = new ConcurrentHashMap<>();
     private final Map<String, String> agentSubs = new ConcurrentHashMap<>();
     private final Map<String, Long> agentRevocations = new ConcurrentHashMap<>();
+    private final java.util.Set<String> resourceIssuers = ConcurrentHashMap.newKeySet();
+
+    @Override
+    public void recordResourceIssuer(String iss) {
+        resourceIssuers.add(MissionUtils.stripTrailingSlash(iss));
+    }
+
+    @Override
+    public boolean isKnownResourceIssuer(String iss) {
+        return resourceIssuers.contains(MissionUtils.stripTrailingSlash(iss));
+    }
 
     private static String key(String iss, String jti) {
         return MissionUtils.stripTrailingSlash(iss) + "\u0000" + jti;

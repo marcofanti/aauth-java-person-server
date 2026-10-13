@@ -55,23 +55,28 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
     }
 
     @Override
-    public synchronized void recordPresentation(String jti, String asIssuer) {
-        String issuer = MissionUtils.stripTrailingSlash(asIssuer);
-        if (!presentedTo(jti).contains(issuer)) {
-            jdbc.update("INSERT INTO ps_person_token_presentation (jti, as_iss) VALUES (?, ?)", jti, issuer);
-        }
+    public void recordPresentation(String jti, String asIssuer, String agentJkt) {
+        jdbc.update(
+                "INSERT INTO ps_person_token_presentation (jti, as_iss, agent_jkt) VALUES (?, ?, ?) "
+                        + "ON CONFLICT DO NOTHING",
+                jti,
+                MissionUtils.stripTrailingSlash(asIssuer),
+                agentJkt);
     }
 
     @Override
-    public List<String> presentedTo(String jti) {
-        return jdbc.queryForList(
-                "SELECT as_iss FROM ps_person_token_presentation WHERE jti = ? ORDER BY as_iss", String.class, jti);
+    public List<Presentation> presentations(String jti) {
+        return jdbc.query(
+                "SELECT as_iss, agent_jkt FROM ps_person_token_presentation WHERE jti = ? ORDER BY as_iss",
+                (rs, rowNum) -> new Presentation(rs.getString("as_iss"), rs.getString("agent_jkt")),
+                jti);
     }
 
     @Override
     public void recordUpstream(String jti, String upstreamIss, String upstreamJti) {
         jdbc.update(
-                "INSERT INTO ps_person_token_upstream (jti, upstream_iss, upstream_jti) VALUES (?, ?, ?)",
+                "INSERT INTO ps_person_token_upstream (jti, upstream_iss, upstream_jti) VALUES (?, ?, ?) "
+                        + "ON CONFLICT DO NOTHING",
                 jti,
                 MissionUtils.stripTrailingSlash(upstreamIss),
                 upstreamJti);

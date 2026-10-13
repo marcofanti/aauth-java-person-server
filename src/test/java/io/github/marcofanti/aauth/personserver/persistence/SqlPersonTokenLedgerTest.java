@@ -69,13 +69,15 @@ class SqlPersonTokenLedgerTest {
     @Test
     void presentationsToAccessServersPersistWithoutDuplicates() {
         SqlPersonTokenLedger ledger = new SqlPersonTokenLedger(db.dataSource());
-        ledger.recordPresentation("pt-1", "https://as-b.example/");
-        ledger.recordPresentation("pt-1", "https://as-b.example");
-        ledger.recordPresentation("pt-1", "https://as-a.example");
+        ledger.recordPresentation("pt-1", "https://as-b.example/", "jkt-1");
+        ledger.recordPresentation("pt-1", "https://as-b.example", "jkt-2");
+        ledger.recordPresentation("pt-1", "https://as-a.example", "jkt-1");
 
-        assertThat(new SqlPersonTokenLedger(db.dataSource()).presentedTo("pt-1"))
-                .containsExactly("https://as-a.example", "https://as-b.example");
-        assertThat(ledger.presentedTo("pt-2")).isEmpty();
+        assertThat(new SqlPersonTokenLedger(db.dataSource()).presentations("pt-1"))
+                .containsExactly(
+                        new PersonTokenLedger.Presentation("https://as-a.example", "jkt-1"),
+                        new PersonTokenLedger.Presentation("https://as-b.example", "jkt-1"));
+        assertThat(ledger.presentations("pt-2")).isEmpty();
     }
 
     @Test

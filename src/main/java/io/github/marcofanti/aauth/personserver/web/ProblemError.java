@@ -14,6 +14,7 @@ public final class ProblemError extends RuntimeException {
     public static final String REVOKED_RESOURCE_TOKEN = "revoked_resource_token";
     public static final String INVALID_SUBAGENT_TOKEN = "invalid_subagent_token";
     public static final String EXPIRED_SUBAGENT_TOKEN = "expired_subagent_token";
+    public static final String REVOKED_SUBAGENT_TOKEN = "revoked_subagent_token";
     public static final String INVALID_UPSTREAM_TOKEN = "invalid_upstream_token";
     public static final String EXPIRED_UPSTREAM_TOKEN = "expired_upstream_token";
     public static final String REVOKED_UPSTREAM_TOKEN = "revoked_upstream_token";
