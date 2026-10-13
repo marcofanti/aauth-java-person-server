@@ -16,15 +16,15 @@ Plan: [docs/PLAN.md](docs/PLAN.md) · status and deviations: [docs/PROGRESS.md](
 
 ## Protocol version
 
-The `draft11` branch speaks AAuth draft-11 (Signature-Keys draft-09) and still accepts
-draft-10 clients, so the Python walkthroughs below keep working. Draft-11 clients discover
+This server speaks AAuth draft-11 (Signature-Keys draft-09) and still accepts draft-10
+clients that use fully-specified keys. The Python reference's signed draft-10 scripts are
+refused until it moves to `aauth` 0.5.x; see Interop below. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), `person_token_endpoint` (`/person-token`),
 `mission_endpoint` (`/agent-missions`) and `revocation_endpoint` (`/revoke`); draft-10
 clients keep `/token` and `/mission`. Four-party federation, call chaining and the
 revocation cascade are draft-11 only. Status per checklist item:
-[docs/PLAN-draft11.md](docs/PLAN-draft11.md). The branch builds against
-aauth-java-library `0.3.0-SNAPSHOT` (install it locally from the library's `draft11`
-branch); CI stays red until that version is released.
+[docs/PLAN-draft11.md](docs/PLAN-draft11.md). Built on aauth-java-library `0.3.0`
+(strict draft-11).
 
 ## Build and test
 
@@ -102,7 +102,7 @@ Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides
 
 ## Interop with the Python repo
 
-**Status on the `draft11` branch (2026-10-13):** this branch builds on the strict draft-11
+**Status since library 0.3.0 (2026-10-13):** this server builds on the strict draft-11
 library (`0.3.0`). That library accepts only fully-specified `Ed25519`/`ES256`/`ES384` keys and
 JWTs. The Python reference server's scripts use the Python `aauth` 0.3.0 library, which labels
 Ed25519 keys and JWTs `alg: EdDSA`, so its signed scripts are now refused:
@@ -115,8 +115,8 @@ Ed25519 keys and JWTs `alg: EdDSA`, so its signed scripts are now refused:
 | `scripts/ps-token-mode3.py` | registration key refused (400, `EdDSA`) |
 
 Draft-10 requests from clients with fully-specified keys still work, including `demo/demo.sh`.
-The signed scripts work again once the Python reference moves to `aauth` 0.5.x. On `main`
-(library 0.2.3), all four pass, as verified 2026-07-30 and again 2026-08-06.
+The signed scripts work again once the Python reference moves to `aauth` 0.5.x. With
+library 0.2.3 (before draft-11), all four passed, as verified 2026-07-30 and again 2026-08-06.
 
 Run from a sibling clone of
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) at

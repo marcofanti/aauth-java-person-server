@@ -83,7 +83,7 @@ and the derived `aauth-java-person-server.pptx`.
   `AAUTH_AS_PUBLIC_ORIGIN` names a different origin.
 - **2026-10-12 — AAuth draft-11, dual-stack** (branch `draft11`, plan and per-item status in
   [PLAN-draft11.md](PLAN-draft11.md)): emits draft-11 while still accepting draft-10, built
-  against aauth-java-library `0.3.0-SNAPSHOT`. New endpoints `/auth-token`,
+  against aauth-java-library `0.3.0` (released 2026-10-13). New endpoints `/auth-token`,
   `/person-token`, `/agent-missions`, `/revoke`; problem+json errors and `Signature-Error`
   codes on draft-11 paths; directed `sub` per resource; presented-token cross-checks;
   real four-party federation to an AS (`HttpAsFederator`; draft-10 keeps the fake

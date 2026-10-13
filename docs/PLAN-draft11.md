@@ -173,7 +173,7 @@ before a restart live until `exp`). Uppercase agent locals: the Agent Server min
 and validates none (`AgentIds.isValidAgentId` has no callers), so nothing changes there. Python
 interop rerun and `demo/demo.sh` pass on this branch. Left for the user:
 `aauth-full-java-demo` acceptance on draft-11 (that repo has uncommitted work), and the
-library release that lets this branch leave `0.3.0-SNAPSHOT`.
+library release that lets this branch leave `0.3.0-SNAPSHOT` (done: 0.3.0 released 2026-10-13).
 
 Review hardening (2026-10-12): `/revoke` accepts resource revocations only from issuers whose
 resource tokens this PS has verified (403 `unsupported_iss` before any fetch). An agent-token
