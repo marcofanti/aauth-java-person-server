@@ -64,6 +64,8 @@ public final class PendingRecord {
     public volatile Map<String, Object> tokenAgentCnfJwk;
     public volatile String evaluatorReason;
     public volatile PersonTokenRequest personTokenRequest;
+    /** Set on a draft-11 mission proposal awaiting the person (§8.1). */
+    public volatile Draft11Missions.PendingProposal draft11Mission;
     /** Epoch second after which the pending ends {@code expired} whatever its state (§10.1.1). */
     public volatile Long deadline;
 

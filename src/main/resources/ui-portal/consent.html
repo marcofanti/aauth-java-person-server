@@ -96,6 +96,15 @@
         "The agent wrote this; the resource has not confirmed it.",
         "consent-agent");
       agent.add("Justification", context.justification);
+      agent.add("Proposed mission", context.proposal_description);
+      if (context.proposal_tools && context.proposal_tools.length) {
+        agent.add("Requested tools", el("ul", { class: "scope-list" },
+          context.proposal_tools.map((tool) => el("li", {}, tool))));
+      }
+      if (context.proposal_resources && context.proposal_resources.length) {
+        agent.add("Requested resources", el("ul", { class: "scope-list" },
+          context.proposal_resources.map((resource) => el("li", { class: "mono" }, resource))));
+      }
       agent.add("Action", context.permission_action);
       agent.add("Action description", context.permission_description);
       if (context.permission_parameters) {

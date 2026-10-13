@@ -7,6 +7,7 @@ import io.github.marcofanti.aauth.personserver.ps.AgentServerJwksResolver;
 import io.github.marcofanti.aauth.personserver.ps.AsFederator;
 import io.github.marcofanti.aauth.personserver.ps.AuthTokenIssuer;
 import io.github.marcofanti.aauth.personserver.ps.ConsentScopeStore;
+import io.github.marcofanti.aauth.personserver.ps.Draft11Missions;
 import io.github.marcofanti.aauth.personserver.ps.FakeAsFederator;
 import io.github.marcofanti.aauth.personserver.ps.HttpAsFederator;
 import io.github.marcofanti.aauth.personserver.ps.MemoryMissionControl;
@@ -75,6 +76,12 @@ public final class PersistedWiring {
                 upstreamTokens);
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
+        Draft11Missions draft11Missions = new Draft11Missions(
+                mission,
+                personTokenIssuer,
+                store,
+                new Draft11Missions.Settings(
+                        origin, options.userId(), options.missionLifetimeSeconds(), options.autoApproveMission()));
         MemoryUserConsent consent = new MemoryUserConsent(
                 mission,
                 store,
@@ -83,7 +90,8 @@ public final class PersistedWiring {
                 options.agentJwtStub(),
                 origin,
                 resourceResolver,
-                personTokenIssuer);
+                personTokenIssuer,
+                draft11Missions);
         return new PsContainer(
                 mission,
                 store,
@@ -103,7 +111,8 @@ public final class PersistedWiring {
                 personTokenIssuer,
                 personTokenLedger,
                 revocations,
-                upstreamTokens);
+                upstreamTokens,
+                draft11Missions);
     }
 
     public static AsContainer buildPersistedAs(DataSource dataSource, AsContainer.MemoryOptions options) {

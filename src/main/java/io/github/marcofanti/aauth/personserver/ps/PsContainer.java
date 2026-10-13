@@ -23,4 +23,5 @@ public record PsContainer(
         PersonTokenIssuer personTokenIssuer,
         PersonTokenLedger personTokenLedger,
         RevocationStore revocations,
-        UpstreamTokens upstreamTokens) {}
+        UpstreamTokens upstreamTokens,
+        Draft11Missions draft11Missions) {}

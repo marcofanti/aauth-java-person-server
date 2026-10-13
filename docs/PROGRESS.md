@@ -216,3 +216,6 @@ and the derived `aauth-java-person-server.pptx`.
 - **AS-issued auth tokens as `presented_token`** (2026-10-13): `/auth-token` accepts an auth
   token from an AS this PS federated with for the same `aud`/`sub` (step-up after a four-party
   grant, §7.2.1), using the same rule as upstream-token verification.
+- **Draft-11 mission deferral** (2026-10-13): `AAUTH_PS_AUTO_APPROVE_MISSION=false` now also
+  defers `/agent-missions` (§8.1 MAY) to the person; the agent polls for the §8.2 approval body.
+  Consent pages show mission proposals (description, tools, resources) for both drafts.

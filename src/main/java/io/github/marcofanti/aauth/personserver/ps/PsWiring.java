@@ -242,6 +242,12 @@ public final class PsWiring {
                 upstreamTokens);
         PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
                 origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
+        Draft11Missions draft11Missions = new Draft11Missions(
+                backend,
+                personTokenIssuer,
+                store,
+                new Draft11Missions.Settings(
+                        origin, options.userId(), options.missionLifetimeSeconds(), options.autoApproveMission()));
         MemoryUserConsent consent = new MemoryUserConsent(
                 backend,
                 store,
@@ -250,7 +256,8 @@ public final class PsWiring {
                 options.agentJwtStub(),
                 origin,
                 resourceResolver,
-                personTokenIssuer);
+                personTokenIssuer,
+                draft11Missions);
         MemoryMissionControl control = new MemoryMissionControl(backend);
         return new PsContainer(
                 backend,
@@ -271,6 +278,7 @@ public final class PsWiring {
                 personTokenIssuer,
                 personTokenLedger,
                 revocations,
-                upstreamTokens);
+                upstreamTokens,
+                draft11Missions);
     }
 }

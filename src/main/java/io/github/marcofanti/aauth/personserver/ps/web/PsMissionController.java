@@ -45,8 +45,7 @@ public class PsMissionController {
         this.ps = ps;
         this.auth = auth;
         this.psOrigin = MissionUtils.stripTrailingSlash(settings.origin());
-        this.missions = new Draft11Missions(
-                ps.mission(), ps.personTokenIssuer(), psOrigin, settings.userId(), settings.missionLifetimeSeconds());
+        this.missions = ps.draft11Missions();
         this.status = new Draft11MissionStatus(ps.mission());
     }
 
@@ -60,7 +59,11 @@ public class PsMissionController {
                 Sanitize.markdownOrNull(body.optString("description")),
                 tools(body.optList("tools")),
                 strings(body.optList("resources")));
-        return ResponseEntity.ok(missions.create(agent, proposal).body());
+        return switch (missions.propose(agent, proposal)) {
+            case Draft11Missions.Outcome.Approved approved ->
+                ResponseEntity.ok(approved.approval().body());
+            case Draft11Missions.Outcome.Deferred deferred -> AAuthResponses.jsonDeferred(deferred.deferred());
+        };
     }
 
     @PostMapping("/agent-missions/{s256}")

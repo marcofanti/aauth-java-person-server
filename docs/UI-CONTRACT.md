@@ -57,7 +57,9 @@ Reads `code` (required) and `callback` (optional) from the query string.
   `pending_kind`, `resource_name`, `justification`, `agent_name`,
   `clarification_responses` (list), `interaction_type`, `summary`, `question`,
   `resource_iss`, `resource_scope`, `resource_mission_s256`, `permission_action`,
-  `permission_description`, `permission_parameters` (object), `evaluator_reason`, `resource_description`, `resource_access_mode`.
+  `permission_description`, `permission_parameters` (object), `evaluator_reason`, `resource_description`, `resource_access_mode`,
+  and for a mission proposal `proposal_description`, `proposal_tools` (list of "name — description"),
+  `proposal_resources` (list).
   Errors: 404 unknown code, 410 expired/consumed.
 - `POST /consent/{pending_id}/decision` with
   `{"approved": bool, "clarification_question"?: str, "answer_text"?: str}` →
@@ -70,7 +72,8 @@ Reads `code` (required) and `callback` (optional) from the query string.
 the resource as the person — shows the resource's metadata `name`, `description`,
 `access_mode`), `token` (scope consent), `permission` (approved-tools
 escalation), `interaction` (agent-initiated: `interaction_type` one of
-`interaction`, `payment`, `question`, `completion`).
+`interaction`, `payment`, `question`, `completion`), `mission` (a mission proposal awaiting the
+person when `AAUTH_PS_AUTO_APPROVE_MISSION=false`; shows the `proposal_*` fields).
 
 ### Portal console (`ui-portal/`)
 

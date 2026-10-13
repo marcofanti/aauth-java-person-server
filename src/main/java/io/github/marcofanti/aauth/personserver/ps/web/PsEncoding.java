@@ -62,6 +62,9 @@ public final class PsEncoding {
         putIfNotNull(payload, "evaluator_reason", context.evaluatorReason());
         putIfNotNull(payload, "resource_description", context.resourceDescription());
         putIfNotNull(payload, "resource_access_mode", context.resourceAccessMode());
+        putIfNotNull(payload, "proposal_description", context.proposalDescription());
+        putIfNotNull(payload, "proposal_tools", context.proposalTools());
+        putIfNotNull(payload, "proposal_resources", context.proposalResources());
         return payload;
     }
 
