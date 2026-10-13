@@ -52,26 +52,34 @@ header, and brokered tokens come from the fake federator (`aa-auth.fake.*`).
 The flows, routes, status codes, and UI are identical to secure mode.
 Never expose insecure-dev beyond localhost.
 
-## Secure mode
+## Secure mode: the draft-11 walkthrough
 
-The same two-terminal shape, everything verified for real:
+The same two-terminal shape, on draft-11 and with everything verified for real:
 
 ```bash
 demo/run-secure-demo.sh            # terminal 1: secure server (both INSECURE_DEV=false)
-demo/secure-demo.sh                # terminal 2: four acts; you approve one registration
+demo/secure-demo.sh                # terminal 2: seven acts; you approve and revoke
 AUTO=1 demo/secure-demo.sh         # unattended smoke test
 ```
 
-Acts: prove stub identities get 401 → real hwk-signed registration, approval,
-and jkt-jwt refresh → a mode-3 agent (own resource metadata + JWKS, `scheme=jwt`
-`POST /token`) waits for **your** approval and receives a genuine Ed25519-signed
-`aa-auth+jwt` → the console's Issued tokens tab shows the record.
+`demo/Draft11Walkthrough.java` plays the agent and a calendar resource at
+`https://rs.uma.lab` (served on `127.0.0.1:9997` behind Caddy), using the
+`io.github.marcofanti:aauth` library:
 
-The signing agents are the Python reference repo's client scripts run unchanged
-(live interop proof), so this mode needs a sibling clone of
-[aauth-person-server](https://github.com/christian-posta/aauth-person-server) at
-`../aauth-person-server` (or `PS_REPO=…`); its virtualenv is created on first
-run. `PORT=…` / `BASE=…` relocate both scripts if 8765 is taken.
+| Act | What happens |
+| --- | --- |
+| 0 | Discovery: the PS, the Agent Server and the resource, each a port-less HTTPS identifier. |
+| 1 | `POST /register` at the Agent Server (hwk-signed); **you** approve; the agent collects its `aa-agent+jwt`. |
+| 2 | `POST /agent-missions` (scheme=jwt, body covered) → the mission blob, its `s256`, and a person token for the resource. |
+| 3 | The agent presents the person token; the resource answers 401 `requirement=auth-token` with a resource token naming it. |
+| 4 | `POST /auth-token` with the resource token and the person token as `presented_token` → an `aa-auth+jwt` (or a 202 for **your** consent). |
+| 5 | The resource verifies the auth token and the request signature, and serves the call. |
+| 6 | **You** revoke the binding: the Agent Server revokes the agent token at the PS, the PS revokes its person and auth tokens at the resource, and both refuse the revoked tokens. |
+
+One-time setup beyond the main demo: `127.0.0.1 rs.uma.lab` in `/etc/hosts`, and a
+Caddy that routes `rs.uma.lab` (it is in `caddy/Caddyfile`; reload a Caddy that was
+already running with `caddy reload --config caddy/Caddyfile --adapter caddyfile`).
+The first run resolves the walkthrough's classpath with Maven.
 
 ## Slides
 

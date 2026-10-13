@@ -219,3 +219,9 @@ and the derived `aauth-java-person-server.pptx`.
 - **Draft-11 mission deferral** (2026-10-13): `AAUTH_PS_AUTO_APPROVE_MISSION=false` now also
   defers `/agent-missions` (§8.1 MAY) to the person; the agent polls for the §8.2 approval body.
   Consent pages show mission proposals (description, tools, resources) for both drafts.
+- **Draft-11 walkthrough replaces the Python-driven secure demo** (2026-10-13):
+  `demo/secure-demo.sh` runs `demo/Draft11Walkthrough.java`, which plays the agent and a
+  resource at `rs.uma.lab` (registration, mission with a person token, resource challenge,
+  `/auth-token`, the call, and a revocation cascade). The old secure demo drove the Python
+  reference's draft-10 signed scripts, which library 0.3.0 refuses. CI runs it in AUTO mode.
+  Running it found that `/revoke` refused the portal's own Agent Server on its own origin (#24).

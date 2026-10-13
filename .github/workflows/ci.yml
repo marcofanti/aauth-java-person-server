@@ -51,7 +51,7 @@ jobs:
           mkcert -install
 
       - name: Map uma.lab hostnames to loopback
-        run: echo "127.0.0.1 ps.uma.lab as.uma.lab" | sudo tee -a /etc/hosts
+        run: echo "127.0.0.1 ps.uma.lab as.uma.lab rs.uma.lab" | sudo tee -a /etc/hosts
 
       - name: Demo smoke test (end-to-end flows via AUTO mode)
         run: |
@@ -63,7 +63,19 @@ jobs:
           done
           AUTO=1 demo/demo.sh
           kill "$server_pid"
+          wait "$server_pid" || true
+
+      - name: Draft-11 walkthrough (secure mode, AUTO)
+        run: |
+          demo/run-secure-demo.sh > secure-server.log 2>&1 &
+          server_pid=$!
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8765/.well-known/aauth-person.json && break
+            sleep 1
+          done
+          AUTO=1 demo/secure-demo.sh
+          kill "$server_pid"
 
       - name: Server log on failure
         if: failure()
-        run: cat server.log || true
+        run: cat server.log secure-server.log || true
