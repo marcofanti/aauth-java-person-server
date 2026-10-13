@@ -213,3 +213,6 @@ and the derived `aauth-java-person-server.pptx`.
   `claims` becomes the agent's pending (the AS's `url`/`code`, or its question). The PS polls
   the AS when the agent polls and forwards clarification answers (§9.1.2). The Python reference
   (draft-10) fakes federation, so there is no parity counterpart.
+- **AS-issued auth tokens as `presented_token`** (2026-10-13): `/auth-token` accepts an auth
+  token from an AS this PS federated with for the same `aud`/`sub` (step-up after a four-party
+  grant, §7.2.1), using the same rule as upstream-token verification.

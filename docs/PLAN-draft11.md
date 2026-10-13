@@ -127,6 +127,9 @@ flows pass; `compat10` is the only place -10 shapes are handled.
 Dual-stack discriminator for the token endpoint: the path. Draft-11 clients discover
 `auth_token_endpoint` (`/auth-token`), draft-10 clients `token_endpoint` (`/token`), so
 `/auth-token` enforces draft-11 rules (PS-30 `presented_token` REQUIRED, problem+json errors).
+The presented token is a person token or auth token this PS issued, or (2026-10-13, four-party
+step-up) an auth token from an AS this PS presented a person token to for the same resource and
+person; any other AS's token fails as an unverifiable presented token.
 
 Library findings to raise on its `draft11` branch: `PersonTokens.Spec` accepts `scope`,
 `account`, and `capabilities`, but §7.1.2 says a person token MUST NOT contain `scope` or
