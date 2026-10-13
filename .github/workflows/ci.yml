@@ -12,6 +12,12 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # Same pins as aauth-full-java-demo's integration workflow (shared local HTTPS front).
+      CADDY_VERSION: "2.11.7"
+      CADDY_SHA512: a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
+      MKCERT_VERSION: "1.4.4"
+      MKCERT_SHA256: 6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,9 +29,29 @@ jobs:
           java-version: '26'
           cache: maven
 
-      # io.github.marcofanti:aauth resolves from Maven Central (0.2.1+).
+      # io.github.marcofanti:aauth resolves from Maven Central.
       - name: Verify (tests, coverage gate, Spotless)
         run: mvn verify
+
+      # Draft-11 identifiers are HTTPS origins without a port: the demo runs behind Caddy on
+      # :443 as https://ps.uma.lab with an mkcert certificate (see README, "Local HTTPS").
+      - name: Install Caddy and mkcert (pinned, checksum-verified)
+        # Work in the runner's temp dir: the repo's own caddy/ directory would block extraction.
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL -o caddy.tar.gz \
+            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          echo "${CADDY_SHA512}  caddy.tar.gz" | sha512sum -c -
+          curl -fsSL -o mkcert \
+            "https://github.com/FiloSottile/mkcert/releases/download/v${MKCERT_VERSION}/mkcert-v${MKCERT_VERSION}-linux-amd64"
+          echo "${MKCERT_SHA256}  mkcert" | sha256sum -c -
+          tar -xzf caddy.tar.gz caddy
+          sudo install -m 0755 caddy mkcert /usr/local/bin/
+          sudo setcap cap_net_bind_service=+ep /usr/local/bin/caddy
+          mkcert -install
+
+      - name: Map uma.lab hostnames to loopback
+        run: echo "127.0.0.1 ps.uma.lab as.uma.lab" | sudo tee -a /etc/hosts
 
       - name: Demo smoke test (end-to-end flows via AUTO mode)
         run: |

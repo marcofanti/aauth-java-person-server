@@ -39,6 +39,23 @@ class PendingTtlTest {
     }
 
     @Test
+    void aPendingPastItsDeadlineEndsExpiredEvenWhileInteracting() {
+        MemoryPendingStore store = storeWithTtl(600);
+        String pendingId = tokenPending(store);
+        store.updatePending(pendingId, PendingUpdate.ofStatus(PendingStatus.INTERACTING));
+        store.getRecord(pendingId).deadline = java.time.Instant.now().getEpochSecond() - 1;
+        assertThatThrownBy(() -> store.getPending(pendingId, false)).isInstanceOf(PendingExpiredException.class);
+    }
+
+    @Test
+    void aPendingBeforeItsDeadlineStaysOpen() {
+        MemoryPendingStore store = storeWithTtl(600);
+        String pendingId = tokenPending(store);
+        store.getRecord(pendingId).deadline = java.time.Instant.now().getEpochSecond() + 60;
+        assertThat(store.getPending(pendingId, false)).isNotNull();
+    }
+
+    @Test
     void expiredCodeLookupIsInvalidAndPurged() {
         MemoryPendingStore store = storeWithTtl(-1);
         String pendingId = tokenPending(store);
@@ -61,7 +78,7 @@ class PendingTtlTest {
         MemoryPendingStore store = storeWithTtl(600);
         String pendingId =
                 store.createPending(new io.github.marcofanti.aauth.personserver.model.MissionProposal("agent", "desc"));
-        assertThatThrownBy(() -> store.replaceTokenRequest(pendingId, "new", null))
+        assertThatThrownBy(() -> store.replaceTokenRequest(pendingId, "new", null, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

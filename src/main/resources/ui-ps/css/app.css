@@ -178,3 +178,8 @@ details.raw pre {
 
 .consent-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
 .scope-list { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+
+.consent-section { margin-top: 1rem; }
+.consent-section h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+.consent-agent { border-left: 3px solid #ca8a04; padding-left: 0.8rem; }
+.consent-agent dd { font-style: italic; }

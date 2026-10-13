@@ -60,6 +60,8 @@ public final class PsEncoding {
         putIfNotNull(payload, "permission_description", context.permissionDescription());
         putIfNotNull(payload, "permission_parameters", context.permissionParameters());
         putIfNotNull(payload, "evaluator_reason", context.evaluatorReason());
+        putIfNotNull(payload, "resource_description", context.resourceDescription());
+        putIfNotNull(payload, "resource_access_mode", context.resourceAccessMode());
         return payload;
     }
 

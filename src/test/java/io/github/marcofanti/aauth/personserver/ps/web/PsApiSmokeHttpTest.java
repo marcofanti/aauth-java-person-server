@@ -55,7 +55,8 @@ class PsApiSmokeHttpTest {
                     3600,
                     null,
                     null,
-                    "keyword");
+                    "keyword",
+                    null);
         }
 
         @Bean
@@ -96,10 +97,21 @@ class PsApiSmokeHttpTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.issuer").value(ORIGIN))
                 .andExpect(jsonPath("$.token_endpoint").value(ORIGIN + "/token"))
+                .andExpect(jsonPath("$.auth_token_endpoint").value(ORIGIN + "/auth-token"))
+                .andExpect(jsonPath("$.person_token_endpoint").value(ORIGIN + "/person-token"))
+                .andExpect(jsonPath("$.accept_signature_algs[0]").value("Ed25519"))
                 .andExpect(jsonPath("$.jwks_uri").value(ORIGIN + "/.well-known/jwks.json"));
         mvc.perform(get("/.well-known/jwks.json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys[0].kty").value("OKP"));
+    }
+
+    @Test
+    void authTokenEndpointServesTheSameHandlerAsLegacyTokenPath() throws Exception {
+        // PS-01: draft-11 renames token_endpoint to auth_token_endpoint; dual-stack keeps /token.
+        mvc.perform(post("/auth-token").contentType("application/json").content("{\"resource_token\":\"x\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").exists());
     }
 
     @Test

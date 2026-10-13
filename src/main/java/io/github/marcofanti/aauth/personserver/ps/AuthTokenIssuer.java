@@ -1,5 +1,6 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import io.github.marcofanti.aauth.personserver.compat10.Draft10Tokens;
 import io.github.marcofanti.aauth.personserver.model.AuthTokenResponse;
 import io.github.marcofanti.aauth.personserver.model.MissionRef;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
@@ -11,6 +12,8 @@ import org.slf4j.LoggerFactory;
 
 /** Issue PS-signed {@code aa-auth+jwt} (SPEC §Auth Token, three-party). */
 public final class AuthTokenIssuer {
+
+    private static final long MAX_DRAFT11_LIFETIME_SECONDS = 3600;
 
     private static final Logger log = LoggerFactory.getLogger(AuthTokenIssuer.class);
 
@@ -40,11 +43,17 @@ public final class AuthTokenIssuer {
             Map<String, Object> resourceClaims,
             MissionRef mission,
             String justification,
-            String issueMethod) {
+            String issueMethod,
+            Long maxExp) {
 
         public IssueSpec {
             issueMethod = issueMethod == null ? "autonomous" : issueMethod;
         }
+    }
+
+    /** This PS's signing JWKS, for verifying tokens it issued. */
+    public Map<String, Object> jwks() {
+        return signing.getJwks();
     }
 
     public AuthTokenResponse issue(IssueSpec spec) {
@@ -64,21 +73,34 @@ public final class AuthTokenIssuer {
             missionObj = copy;
         }
 
-        // Draft-10 §12.3: the PS copies the resource token's account claim into the auth token.
-        String account = resourceClaims.get("account") instanceof String value ? value : null;
+        // The PS copies the resource token's account claim into the auth token (§12.3).
+        String account = stringClaim(resourceClaims, "account");
 
-        long exp = Instant.now().getEpochSecond() + lifetimeSeconds;
-        String token = AuthTokens.create(AuthTokens.Spec.builder(iss, resourceIss, spec.agentId())
-                .cnfJwk(spec.agentCnfJwk())
-                .signingKey(signing.keyPair().getPrivate(), signing.kid())
-                .act(Map.of("sub", spec.agentId()))
-                .scope(scope)
-                .sub(userSub)
-                .exp(exp)
-                .mission(missionObj)
-                .dwk("aauth-person.json")
-                .account(account)
-                .build());
+        boolean draft11 = ResourceTokenVerifier.isDraft11(resourceClaims);
+        long now = Instant.now().getEpochSecond();
+        long exp = now + lifetimeSeconds;
+        if (draft11) {
+            // §9.4.1: at most one hour, and never past the agent token or the presented token.
+            exp = Math.min(exp, now + MAX_DRAFT11_LIFETIME_SECONDS);
+            if (spec.maxExp() != null) {
+                exp = Math.min(exp, spec.maxExp());
+            }
+        }
+        String token = draft11
+                ? issueDraft11(spec, resourceClaims, resourceIss, scope, account, exp)
+                : Draft10Tokens.createAuthToken(
+                        new Draft10Tokens.AuthTokenSpec(
+                                iss,
+                                resourceIss,
+                                spec.agentId(),
+                                spec.agentCnfJwk(),
+                                userSub,
+                                scope,
+                                exp,
+                                missionObj,
+                                account),
+                        signing.keyPair().getPrivate(),
+                        signing.kid());
 
         if (store != null) {
             try {
@@ -96,6 +118,49 @@ public final class AuthTokenIssuer {
             }
         }
 
-        return new AuthTokenResponse(token, lifetimeSeconds);
+        return new AuthTokenResponse(token, (int) (exp - now));
+    }
+
+    /**
+     * Draft-11 auth token (§9.4.1): {@code ps} is this PS, {@code sub} is the resource token's
+     * directed identifier, mission rides as {@code mission_s256}; no {@code agent}/{@code act}.
+     */
+    private String issueDraft11(
+            IssueSpec spec,
+            Map<String, Object> resourceClaims,
+            String resourceIss,
+            String scope,
+            String account,
+            long exp) {
+        String missionS256 = stringClaim(resourceClaims, "mission_s256");
+        if (missionS256 == null && spec.mission() != null) {
+            missionS256 = spec.mission().s256();
+        }
+        // exp already folds in the agent token, presented token, upstream and mission bounds.
+        AuthTokens.Spec.Builder builder = AuthTokens.Spec.builder(
+                        iss, resourceIss, stringClaim(resourceClaims, "sub"), iss)
+                .cnfJwk(spec.agentCnfJwk())
+                .signingKey(signing.keyPair().getPrivate(), signing.kid())
+                .bounds(exp, exp)
+                .exp(exp)
+                .dwk(AuthTokens.DWK_PERSON);
+        if (!scope.isEmpty()) {
+            builder.scope(scope);
+        }
+        if (missionS256 != null) {
+            builder.missionS256(missionS256).missionExp(exp);
+        }
+        String tenant = stringClaim(resourceClaims, "tenant");
+        if (tenant != null) {
+            builder.tenant(tenant);
+        }
+        if (account != null) {
+            builder.account(account);
+        }
+        return AuthTokens.create(builder.build());
+    }
+
+    private static String stringClaim(Map<String, Object> claims, String name) {
+        return claims.get(name) instanceof String value ? value : null;
     }
 }

@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.ps;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.time.Instant;
@@ -55,6 +56,9 @@ public final class PendingRecord {
     public volatile Map<String, Object> verifiedResourceClaims;
     public volatile Map<String, Object> tokenAgentCnfJwk;
     public volatile String evaluatorReason;
+    public volatile PersonTokenRequest personTokenRequest;
+    /** Epoch second after which the pending ends {@code expired} whatever its state (§10.1.1). */
+    public volatile Long deadline;
 
     public PendingRecord(String pendingId, String interactionCode, String kind, Instant createdAt, int ttlSeconds) {
         this.pendingId = pendingId;
@@ -62,6 +66,47 @@ public final class PendingRecord {
         this.kind = kind;
         this.createdAt = createdAt;
         this.ttlSeconds = ttlSeconds;
+    }
+
+    /** Whether this pending was started for the resource token {@code (iss, jti)}. */
+    public boolean startedFor(String iss, String jti) {
+        Map<String, Object> claims = verifiedResourceClaims;
+        return claims != null
+                && jti.equals(claims.get("jti"))
+                && MissionUtils.stripTrailingSlash(iss)
+                        .equals(MissionUtils.stripTrailingSlash(String.valueOf(claims.get("iss"))));
+    }
+
+    /**
+     * Whether this pending relies on one of {@code jtis} (tokens this PS issued) as its presented
+     * token or its upstream token, so revoking that token ends it (§11.12.4).
+     */
+    public boolean dependsOn(java.util.Set<String> jtis) {
+        TokenRequest request = tokenRequest;
+        if (request != null) {
+            if (request.draft11() != null
+                    && jtis.contains(jtiOf(request.draft11().presentedToken()))) {
+                return true;
+            }
+            if (jtis.contains(jtiOf(request.upstreamToken()))) {
+                return true;
+            }
+        }
+        PersonTokenRequest personRequest = personTokenRequest;
+        return personRequest != null
+                && personRequest.upstream() != null
+                && jtis.contains(personRequest.upstream().jti());
+    }
+
+    private static String jtiOf(String token) {
+        if (token == null) {
+            return null;
+        }
+        try {
+            return io.github.marcofanti.aauth.signing.Jwts.parse(token).claim("jti");
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** Agent id owning this pending row, from whichever request field is present. */

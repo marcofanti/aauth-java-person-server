@@ -2,11 +2,13 @@ package io.github.marcofanti.aauth.personserver.ps.web;
 
 import io.github.marcofanti.aauth.TokenException;
 import io.github.marcofanti.aauth.signing.HttpSignatureException;
+import io.github.marcofanti.aauth.signing.SignatureInputHeader;
 import io.github.marcofanti.aauth.signing.SignatureKeyHeader;
 import io.github.marcofanti.aauth.signing.SignatureVerifier;
 import io.github.marcofanti.aauth.signing.VerifyRequest;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
@@ -30,6 +32,8 @@ public final class HttpSigAuth {
         }
     }
 
+    private static final long CREATED_WINDOW_SECONDS = 60;
+
     private HttpSigAuth() {}
 
     static String extractJwtFromSignatureKey(SignatureKeyHeader.Parsed parsed) {
@@ -52,6 +56,25 @@ public final class HttpSigAuth {
                             request.header("signature-key"))
                     .build());
         } catch (HttpSignatureException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Whether the signature's {@code created} is further ahead of this server's clock than the
+     * window, which draft-11 reports as {@code clock_skew} rather than {@code invalid_signature}
+     * (§11.3.4 step 3).
+     */
+    public static boolean createdAheadOfClock(SignedRequest request) {
+        String signatureInput = request.header("signature-input");
+        if (signatureInput == null) {
+            return false;
+        }
+        try {
+            Object created = SignatureInputHeader.parse(signatureInput).params().get("created");
+            return created != null
+                    && Long.parseLong(created.toString()) > Instant.now().getEpochSecond() + CREATED_WINDOW_SECONDS;
+        } catch (HttpSignatureException | IllegalArgumentException e) {
             return false;
         }
     }
@@ -84,7 +107,7 @@ public final class HttpSigAuth {
 
         Map<String, Object> claims;
         try {
-            claims = AgentTokens.verify(jwt, jwksFetcher, null);
+            claims = AgentTokens.verify(jwt, (id, dwk, kid) -> jwksFetcher.apply(id), null);
         } catch (TokenException e) {
             String message = e.getMessage() == null ? "invalid agent token" : e.getMessage();
             if (message.contains("expired")) {

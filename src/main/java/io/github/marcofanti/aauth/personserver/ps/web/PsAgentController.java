@@ -10,9 +10,10 @@ import io.github.marcofanti.aauth.personserver.model.MissionRef;
 import io.github.marcofanti.aauth.personserver.model.PendingPollOutcome;
 import io.github.marcofanti.aauth.personserver.model.PermissionOutcome;
 import io.github.marcofanti.aauth.personserver.model.PermissionRequest;
-import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.ToolSpec;
+import io.github.marcofanti.aauth.personserver.ps.Draft11MissionStatus;
+import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsGovernance;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
@@ -20,6 +21,7 @@ import io.github.marcofanti.aauth.personserver.web.AAuthResponses;
 import io.github.marcofanti.aauth.personserver.web.BodyReader;
 import io.github.marcofanti.aauth.personserver.web.BodyValidationException;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.personserver.web.RequestExtract;
 import io.github.marcofanti.aauth.personserver.web.Sanitize;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,10 +48,27 @@ public class PsAgentController {
 
     private final PsContainer ps;
     private final PsAuth auth;
+    private final String psOrigin;
+    private final Draft11MissionStatus missionStatus;
 
-    public PsAgentController(PsContainer ps, PsAuth auth) {
+    public PsAgentController(PsContainer ps, PsAuth auth, PsSettings settings) {
         this.ps = ps;
         this.auth = auth;
+        this.psOrigin = MissionUtils.stripTrailingSlash(settings.origin());
+        this.missionStatus = new Draft11MissionStatus(ps.mission());
+    }
+
+    /**
+     * Draft-11 names a mission by {@code mission_s256} (§8.2.1, checked for ownership, expiry and
+     * termination); draft-10 by the {@code {approver, s256}} object.
+     */
+    private MissionRef missionParameter(BodyReader body, String agentId) {
+        String s256 = body.optString("mission_s256");
+        if (s256 != null) {
+            missionStatus.requireActiveParameter(s256, agentId);
+            return new MissionRef(psOrigin, s256);
+        }
+        return missionRef(body.optMap("mission"));
     }
 
     static MissionRef missionRef(Map<String, Object> mission) {
@@ -91,31 +110,57 @@ public class PsAgentController {
         };
     }
 
+    /** Draft-10 token endpoint ({@code token_endpoint}); kept for dual-stack clients. */
     @PostMapping("/token")
     public ResponseEntity<Object> postToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
         BodyReader body = BodyReader.parse(raw);
-        String resourceToken = body.requireString("resource_token");
-        String justification = Sanitize.markdownOrNull(body.optString("justification"));
         MissionRef mission = missionRef(body.optMap("mission"));
         if (mission == null) {
             mission = MissionHeader.parseAAuthMissionHeader(signed.header("aauth-mission"));
         }
-        TokenRequest tokenRequest = new TokenRequest(
-                agent.agentId(),
-                resourceToken,
-                justification,
-                body.optString("upstream_token"),
-                body.optString("login_hint"),
-                body.optString("tenant"),
-                body.optString("domain_hint"),
-                mission,
-                agent.agentCnfJwk(),
-                agent.agentJkt(),
-                agent.secureMode());
-        TokenOutcome outcome = ps.tokenBroker().requestToken(tokenRequest);
-        return AAuthResponses.tokenOutcomeResponse(outcome);
+        TokenRequest tokenRequest = tokenRequest(agent, body, mission, null);
+        return AAuthResponses.tokenOutcomeResponse(ps.tokenBroker().requestToken(tokenRequest));
+    }
+
+    /**
+     * Draft-11 {@code auth_token_endpoint} (§7.2.1): {@code presented_token} is REQUIRED and the
+     * mission comes from the verified resource token. Errors are problem+json.
+     */
+    @PostMapping("/auth-token")
+    public ResponseEntity<Object> postAuthToken(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
+        SignedRequest signed = RequestExtract.signedRequest(request, raw);
+        PsAuth.TokenAgentContext agent = auth.requireTokenAgent(signed);
+        BodyCoverage.require(signed);
+        BodyReader body;
+        String presentedToken;
+        try {
+            body = BodyReader.parse(raw);
+            body.requireString("resource_token");
+            presentedToken = body.requireString("presented_token");
+        } catch (BodyValidationException e) {
+            throw new ProblemError(400, "invalid_request", e.getMessage());
+        }
+        TokenRequest tokenRequest = tokenRequest(
+                agent, body, null, new TokenRequest.Draft11(presentedToken, agent.agentTokenExp(), agent.agentToken()));
+        return AAuthResponses.tokenOutcomeResponse(ps.tokenBroker().requestToken(tokenRequest));
+    }
+
+    private static TokenRequest tokenRequest(
+            PsAuth.TokenAgentContext agent, BodyReader body, MissionRef mission, TokenRequest.Draft11 draft11) {
+        return TokenRequest.builder(agent.agentId(), body.requireString("resource_token"))
+                .justification(Sanitize.markdownOrNull(body.optString("justification")))
+                .upstreamToken(body.optString("upstream_token"))
+                .loginHint(body.optString("login_hint"))
+                .tenant(body.optString("tenant"))
+                .domainHint(body.optString("domain_hint"))
+                .mission(mission)
+                .agentCnfJwk(agent.agentCnfJwk())
+                .agentJkt(agent.agentJkt())
+                .secureMode(agent.secureMode())
+                .draft11(draft11)
+                .build();
     }
 
     @PostMapping("/permission")
@@ -128,7 +173,7 @@ public class PsAgentController {
                 body.requireString("action"),
                 Sanitize.markdownOrNull(body.optString("description")),
                 body.optMap("parameters"),
-                missionRef(body.optMap("mission")),
+                missionParameter(body, agentId),
                 agentId);
         PsGovernance.PermissionResponse outcome = ps.governance().postPermission(permission);
         return switch (outcome) {
@@ -150,12 +195,11 @@ public class PsAgentController {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         String agentId = auth.requireAgentId(signed);
         BodyReader body = BodyReader.parse(raw);
-        Map<String, Object> missionMap = body.optMap("mission");
-        if (missionMap == null) {
-            throw new BodyValidationException("field 'mission' required");
+        if (body.optString("mission_s256") == null && body.optMap("mission") == null) {
+            throw new BodyValidationException("field 'mission_s256' (or draft-10 'mission') required");
         }
         AuditRequest audit = new AuditRequest(
-                missionRef(missionMap),
+                missionParameter(body, agentId),
                 body.requireString("action"),
                 Sanitize.markdownOrNull(body.optString("description")),
                 body.optMap("parameters"),
@@ -175,6 +219,10 @@ public class PsAgentController {
         if (!INTERACTION_TYPES.contains(type)) {
             throw new BodyValidationException("type must be one of interaction, payment, question, completion");
         }
+        if ("completion".equals(type) && body.optString("mission_s256") != null) {
+            throw new ProblemError(
+                    400, "invalid_request", "draft-11 completion is POST {mission_endpoint}/{mission_s256} (§8.5)");
+        }
         AgentInteractionRequest interaction = new AgentInteractionRequest(
                 type,
                 Sanitize.markdownOrNull(body.optString("description")),
@@ -182,7 +230,7 @@ public class PsAgentController {
                 body.optString("code"),
                 Sanitize.markdownOrNull(body.optString("question")),
                 Sanitize.markdownOrNull(body.optString("summary")),
-                missionRef(body.optMap("mission")),
+                missionParameter(body, agentId),
                 agentId);
         DeferredResponse deferred;
         try {
@@ -221,7 +269,12 @@ public class PsAgentController {
         } else {
             String justification = Sanitize.markdownOrNull(body.optString("justification"));
             outcome = ps.tokenBroker()
-                    .postUpdatedRequest(pendingId, agentId, body.requireString("resource_token"), justification);
+                    .postUpdatedRequest(
+                            pendingId,
+                            agentId,
+                            body.requireString("resource_token"),
+                            justification,
+                            body.optString("presented_token"));
         }
         return AAuthResponses.jsonDeferred(outcome);
     }

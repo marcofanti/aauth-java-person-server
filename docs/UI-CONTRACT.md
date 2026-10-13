@@ -57,7 +57,7 @@ Reads `code` (required) and `callback` (optional) from the query string.
   `pending_kind`, `resource_name`, `justification`, `agent_name`,
   `clarification_responses` (list), `interaction_type`, `summary`, `question`,
   `resource_iss`, `resource_scope`, `resource_mission_s256`, `permission_action`,
-  `permission_description`, `permission_parameters` (object), `evaluator_reason`.
+  `permission_description`, `permission_parameters` (object), `evaluator_reason`, `resource_description`, `resource_access_mode`.
   Errors: 404 unknown code, 410 expired/consumed.
 - `POST /consent/{pending_id}/decision` with
   `{"approved": bool, "clarification_question"?: str, "answer_text"?: str}` →
@@ -66,7 +66,9 @@ Reads `code` (required) and `callback` (optional) from the query string.
     of denying.
   - `answer_text` answers an agent `question` interaction.
 
-`pending_kind` values: `token` (scope consent), `permission` (approved-tools
+`pending_kind` values: `person_token` (draft-11 first-use approval: may this agent act at
+the resource as the person — shows the resource's metadata `name`, `description`,
+`access_mode`), `token` (scope consent), `permission` (approved-tools
 escalation), `interaction` (agent-initiated: `interaction_type` one of
 `interaction`, `payment`, `question`, `completion`).
 
@@ -115,8 +117,8 @@ Agent Server (person-facing):
   (pre-trust a stable key without a pending registration).
 
 Metadata (no auth): `GET /.well-known/aauth-person.json` (`issuer`,
-`token_endpoint`, `mission_endpoint`, `permission_endpoint`, `audit_endpoint`,
-`interaction_endpoint`, `mission_control_endpoint`, `jwks_uri`),
+`auth_token_endpoint` (+ legacy `token_endpoint`), `person_token_endpoint`, `accept_signature_algs`, `mission_endpoint`, `permission_endpoint`, `audit_endpoint`,
+`interaction_endpoint`, `mission_control_endpoint`, `revocation_endpoint`, `jwks_uri`),
 `GET /.well-known/aauth-agent.json` (`issuer`, `jwks_uri`, `client_name`,
 `registration_endpoint`, `refresh_endpoint`), `GET /.well-known/jwks.json` (merged).
 

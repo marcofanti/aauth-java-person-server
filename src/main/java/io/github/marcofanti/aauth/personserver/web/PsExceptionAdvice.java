@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -31,6 +32,9 @@ public class PsExceptionAdvice {
     static boolean isAgentProtocolPath(String path) {
         return path.startsWith("/mission")
                 || path.startsWith("/token")
+                || path.startsWith("/auth-token")
+                || path.startsWith("/person-token")
+                || path.startsWith("/agent-missions")
                 || path.startsWith("/pending")
                 || path.startsWith("/permission")
                 || path.startsWith("/audit")
@@ -47,6 +51,9 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "mission_terminated");
         body.put("mission_status", "terminated");
+        if (e.reason() != null) {
+            body.put("termination_reason", e.reason());
+        }
         return ResponseEntity.status(403).body(body);
     }
 
@@ -84,6 +91,12 @@ public class PsExceptionAdvice {
         if ("denied".equals(reason)) {
             return aauthJsonError(403, ErrorCodes.ERROR_DENIED, "request was denied");
         }
+        if (ProblemError.AS_UNREACHABLE.equals(reason)) {
+            return aauthJsonError(502, reason, "could not obtain a verifiable auth token from the access server");
+        }
+        if ("revoked".equals(reason)) {
+            return aauthJsonError(403, "revoked", "a token this pending request depends on was revoked");
+        }
         return aauthJsonError(403, ErrorCodes.ERROR_DENIED, reason);
     }
 
@@ -112,9 +125,41 @@ public class PsExceptionAdvice {
         return aauthJsonError(401, e.error(), e.getMessage());
     }
 
+    static boolean isDraft11Path(String path) {
+        return path.startsWith("/auth-token") || path.startsWith("/person-token") || path.startsWith("/agent-missions");
+    }
+
     @ExceptionHandler(AgentTokenRejectException.class)
-    public ResponseEntity<Map<String, Object>> agentTokenReject(AgentTokenRejectException e) {
-        return aauthJsonError(401, e.error(), e.getMessage());
+    public ResponseEntity<Map<String, Object>> agentTokenReject(
+            AgentTokenRejectException e, HttpServletRequest request) {
+        if (!isDraft11Path(request.getRequestURI())) {
+            // Draft-10 has no clock_skew; a signature outside the window is invalid_signature there.
+            String error = SignatureError.CLOCK_SKEW.equals(e.error()) ? ErrorCodes.ERROR_INVALID_SIGNATURE : e.error();
+            return aauthJsonError(401, error, e.getMessage());
+        }
+        // Draft-11 §11.9.3: no agent-token codes; a failing Signature-Key token is a 401 whose
+        // Signature-Error header (§11.3.4) is the machine-readable carrier.
+        String code =
+                switch (e.error()) {
+                    case AgentTokenRejectException.EXPIRED_AGENT_TOKEN -> "expired_jwt";
+                    case ErrorCodes.ERROR_INVALID_SIGNATURE -> ErrorCodes.ERROR_INVALID_SIGNATURE;
+                    case SignatureError.CLOCK_SKEW -> SignatureError.CLOCK_SKEW;
+                    default -> "invalid_jwt";
+                };
+        return signatureError(new SignatureError(code, e.getMessage()));
+    }
+
+    @ExceptionHandler(SignatureError.class)
+    public ResponseEntity<Map<String, Object>> signatureError(SignatureError e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", e.code());
+        body.put("detail", e.getMessage());
+        ResponseEntity.BodyBuilder response =
+                ResponseEntity.status(401).header(AAuthHeaders.HEADER_SIGNATURE_ERROR, "error=" + e.code());
+        if (e.acceptScheme() != null) {
+            response.header("Accept-Signature-Scheme", e.acceptScheme());
+        }
+        return response.contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
     }
 
     @ExceptionHandler(BodyValidationException.class)
@@ -125,6 +170,20 @@ public class PsExceptionAdvice {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("detail", e.getMessage());
         return ResponseEntity.status(422).body(body);
+    }
+
+    @ExceptionHandler(ProblemError.class)
+    public ResponseEntity<Map<String, Object>> problem(ProblemError e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", e.error());
+        if (e.detail() != null) {
+            body.put("detail", e.detail());
+        }
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(e.status());
+        if (e.retryAfter() != null) {
+            response.header("Retry-After", String.valueOf(e.retryAfter()));
+        }
+        return response.contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
     }
 
     @ExceptionHandler(UnsupportedSchemeError.class)

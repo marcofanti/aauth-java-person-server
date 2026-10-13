@@ -4,6 +4,10 @@ Java port of `../aauth-person-server` (AAuth Person Server + Agent Server + unif
 The Python server is the reference implementation — mirror its behavior, route surface,
 error bodies, env vars, and pending/consent semantics. Wire parity beats Java idiom when
 they conflict: the Python repo's walkthrough scripts must pass unchanged against this server.
+Exception (accepted 2026-10-13): from library 0.3.0 (strict draft-11), the Python reference's
+signed draft-10 scripts are refused, because its `aauth` 0.3.0 labels keys and JWTs `alg: EdDSA`.
+Only the unsigned `ps-demo.sh` must still pass. Don't add `EdDSA` tolerance to this repo. Parity
+returns when the Python reference moves to `aauth` 0.5.x; see the README interop table.
 
 ## Structure
 

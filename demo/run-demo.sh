@@ -2,14 +2,25 @@
 # Start the unified portal in demo mode: in-memory state, insecure-dev signatures
 # (so demo.sh can act as an agent with curl + openssl), and fixed demo tokens.
 # Runs in the foreground — Ctrl-C stops it. State resets on every start.
+#
+# AAuth draft-11 identifiers are HTTPS origins without a port, so the portal is reached
+# through the shared Caddy front (caddy/Caddyfile) as https://ps.uma.lab (Person Server)
+# and https://as.uma.lab (its Agent Server), and listens on 127.0.0.1:8765 only.
+# One-time setup: /etc/hosts entries for ps.uma.lab and as.uma.lab, `mkcert -install`,
+# then scripts/setup-tls.sh.
 set -euo pipefail
 
 DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$DEMO_DIR")"
 JAR="${REPO_DIR}/target/aauth-java-person-server-0.1.0-SNAPSHOT.jar"
 
-PORT="${PORT:-8765}"
-ORIGIN="http://127.0.0.1:${PORT}"
+PORT=8765
+ORIGIN="https://ps.uma.lab"
+AS_ORIGIN="${AS_ORIGIN:-https://as.uma.lab}"
+TLS_DIR="${HOME}/.local/share/uma-lab-tls"
+
+[ -f "${TLS_DIR}/truststore.p12" ] || "${REPO_DIR}/scripts/setup-tls.sh"
+"${REPO_DIR}/scripts/run-caddy.sh"
 
 if [ ! -f "$JAR" ]; then
   echo "Building ${JAR##*/} (first run only)…"
@@ -35,7 +46,7 @@ cat <<BANNER
 BANNER
 
 AAUTH_PS_PUBLIC_ORIGIN="$ORIGIN" \
-  AAUTH_AS_PUBLIC_ORIGIN="$ORIGIN" \
+  AAUTH_AS_PUBLIC_ORIGIN="$AS_ORIGIN" \
   AAUTH_PS_INSECURE_DEV=true \
   AAUTH_AS_INSECURE_DEV=true \
   AAUTH_PS_ADMIN_TOKEN=demo-admin \
@@ -45,4 +56,6 @@ AAUTH_PS_PUBLIC_ORIGIN="$ORIGIN" \
   AAUTH_PS_MISSION_EVALUATOR=keyword \
   AAUTH_PS_SIGNING_KEY_PATH="${DEMO_DIR}/.demo-keys/ps-signing-key.pem" \
   AAUTH_AS_SIGNING_KEY_PATH="${DEMO_DIR}/.demo-keys/as-signing-key.pem" \
-  exec java -jar "$JAR" --server.port="$PORT"
+  exec java \
+  -Djavax.net.ssl.trustStore="${TLS_DIR}/truststore.p12" -Djavax.net.ssl.trustStorePassword=changeit \
+  -jar "$JAR" --server.address=127.0.0.1 --server.port="$PORT"

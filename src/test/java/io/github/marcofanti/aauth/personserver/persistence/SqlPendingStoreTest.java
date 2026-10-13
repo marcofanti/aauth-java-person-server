@@ -65,7 +65,7 @@ class SqlPendingStoreTest {
         assertThat(viaCode.pendingId).isEqualTo(pendingId);
 
         store.setCallbackUrl(pendingId, "http://cb.example");
-        store.replaceTokenRequest(pendingId, "new-rt", "new-just");
+        store.replaceTokenRequest(pendingId, "new-rt", "new-just", null);
         PendingRecord record = store.getRecord(pendingId);
         assertThat(record.callbackUrl).isEqualTo("http://cb.example");
         assertThat(record.tokenRequest.resourceToken()).isEqualTo("new-rt");

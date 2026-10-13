@@ -5,6 +5,7 @@ import io.github.marcofanti.aauth.personserver.model.Mission;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.security.SecureRandom;
@@ -16,6 +17,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /** In-memory {@link PendingRequestStore}. */
 public final class MemoryPendingStore implements PendingRequestStore {
@@ -129,6 +131,18 @@ public final class MemoryPendingStore implements PendingRequestStore {
         return register(record).pendingId;
     }
 
+    @Override
+    public String createPersonTokenPending(PersonTokenRequest request, String ownerId) {
+        PendingRecord record = new PendingRecord(
+                newPendingId(), newInteractionCode(), "person_token", Instant.now(), defaultTtlSeconds);
+        record.ownerId = ownerId;
+        record.pendingAgentId = request.agentId();
+        record.missionS256 = request.missionS256();
+        record.personTokenRequest = request;
+        record.requirement = RequirementLevel.INTERACTION;
+        return register(record).pendingId;
+    }
+
     private synchronized PendingRecord require(String pendingId) {
         PendingRecord record = backend.pending.get(pendingId);
         if (record == null) {
@@ -148,6 +162,10 @@ public final class MemoryPendingStore implements PendingRequestStore {
 
     private synchronized void checkTtl(PendingRecord record) {
         if (record.terminal != null || record.gone || record.failure != null) {
+            return;
+        }
+        if (record.deadline != null && Instant.now().getEpochSecond() >= record.deadline) {
+            failPending(record.pendingId, "expired");
             return;
         }
         long elapsed = Duration.between(record.createdAt, Instant.now()).toSeconds();
@@ -201,24 +219,13 @@ public final class MemoryPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public synchronized void replaceTokenRequest(String pendingId, String resourceToken, String justification) {
+    public synchronized void replaceTokenRequest(
+            String pendingId, String resourceToken, String justification, String presentedToken) {
         PendingRecord record = require(pendingId);
         if (record.tokenRequest == null) {
             throw new IllegalStateException("not a token pending");
         }
-        TokenRequest previous = record.tokenRequest;
-        record.tokenRequest = new TokenRequest(
-                previous.agentId(),
-                resourceToken,
-                justification,
-                previous.upstreamToken(),
-                previous.loginHint(),
-                previous.tenant(),
-                previous.domainHint(),
-                previous.mission(),
-                previous.agentCnfJwk(),
-                previous.agentJkt(),
-                previous.secureMode());
+        record.tokenRequest = record.tokenRequest.withUpdatedRequest(resourceToken, justification, presentedToken);
     }
 
     private DeferredResponse toDeferred(PendingRecord record) {
@@ -333,6 +340,25 @@ public final class MemoryPendingStore implements PendingRequestStore {
             out.add(record);
         }
         out.sort(Comparator.comparing(record -> record.pendingId));
+        return out;
+    }
+
+    @Override
+    public void saveRecord(PendingRecord record) {
+        // Records are held by reference; in-place changes are already visible.
+    }
+
+    @Override
+    public synchronized List<String> openPending(Predicate<PendingRecord> filter) {
+        List<String> out = new ArrayList<>();
+        for (PendingRecord record : backend.pending.values()) {
+            if (record.gone || record.terminal != null || record.failure != null) {
+                continue;
+            }
+            if (filter.test(record)) {
+                out.add(record.pendingId);
+            }
+        }
         return out;
     }
 

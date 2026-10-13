@@ -47,45 +47,67 @@
       );
     }
 
-    function factRows(context) {
+    // Draft-11 §7.4: resource-asserted and agent-asserted content are shown apart, and the
+    // agent's claims are attributed to the agent.
+    function factSections(context) {
       const mission = context.mission;
-      const rows = [];
-      const add = (label, value) => {
-        if (value !== null && value !== undefined && value !== "") {
-          rows.push(el("dt", {}, label), el("dd", {}, value));
-        }
+      const section = (title, note, className) => {
+        const rows = [];
+        const add = (label, value) => {
+          if (value !== null && value !== undefined && value !== "") {
+            rows.push(el("dt", {}, label), el("dd", {}, value));
+          }
+        };
+        const render = () => rows.length
+          ? el("section", { class: "consent-section " + className },
+            el("h3", {}, title), note ? el("p", { class: "hint" }, note) : null,
+            el("dl", { class: "facts" }, rows))
+          : null;
+        return { add, render };
       };
-      add("Agent", context.agent_name);
-      add("Request kind", pill(context.pending_kind || "token"));
-      add("Interaction type", context.interaction_type);
+
+      const request = section("This request", null, "consent-request");
+      request.add("Agent", context.agent_name);
+      request.add("Request kind", pill(context.pending_kind || "token"));
+      request.add("Interaction type", context.interaction_type);
       if (mission) {
-        add("Mission", mission.description);
-        add("Mission hash", el("span", { class: "mono" }, shortId(mission.s256, 24)));
+        request.add("Mission you approved", mission.description);
+        request.add("Mission hash", el("span", { class: "mono" }, shortId(mission.s256, 24)));
         if (mission.approved_tools && mission.approved_tools.length) {
-          add("Approved tools", el("ul", { class: "scope-list" },
+          request.add("Approved tools", el("ul", { class: "scope-list" },
             mission.approved_tools.map((tool) => el("li", {}, tool.name + " — " + tool.description))));
         }
       }
+      request.add("Evaluator note", context.evaluator_reason);
+
+      const resource = section("From the resource", null, "consent-resource");
+      resource.add("Resource", context.resource_name);
+      resource.add("Description", context.resource_description);
+      resource.add("Access mode", context.resource_access_mode && el("span", { class: "mono" }, context.resource_access_mode));
+      resource.add("Issuer", context.resource_iss && el("span", { class: "mono" }, context.resource_iss));
+      resource.add("Scope", context.resource_scope && el("span", { class: "mono" }, context.resource_scope));
       if (context.scopes && context.scopes.length) {
-        add("Requested scopes", el("ul", { class: "scope-list" },
+        resource.add("Requested scopes", el("ul", { class: "scope-list" },
           context.scopes.map((scope) => el("li", { class: "mono" }, scope))));
       }
-      add("Justification", context.justification);
-      add("Resource", context.resource_name);
-      add("Resource issuer", context.resource_iss && el("span", { class: "mono" }, context.resource_iss));
-      add("Resource scope", context.resource_scope && el("span", { class: "mono" }, context.resource_scope));
-      add("Action", context.permission_action);
-      add("Action description", context.permission_description);
+
+      const agent = section(
+        "Stated by the agent",
+        "The agent wrote this; the resource has not confirmed it.",
+        "consent-agent");
+      agent.add("Justification", context.justification);
+      agent.add("Action", context.permission_action);
+      agent.add("Action description", context.permission_description);
       if (context.permission_parameters) {
-        add("Action parameters", el("pre", { class: "mono" }, JSON.stringify(context.permission_parameters, null, 2)));
+        agent.add("Action parameters", el("pre", { class: "mono" }, JSON.stringify(context.permission_parameters, null, 2)));
       }
-      add("Summary", context.summary);
-      add("Evaluator note", context.evaluator_reason);
+      agent.add("Summary", context.summary);
       if (context.clarification_responses && context.clarification_responses.length) {
-        add("Agent clarifications", el("ul", { class: "scope-list" },
+        agent.add("Clarifications", el("ul", { class: "scope-list" },
           context.clarification_responses.map((entry) => el("li", {}, entry))));
       }
-      return rows;
+
+      return [request.render(), resource.render(), agent.render()];
     }
 
     async function decide(pendingId, decision) {
@@ -149,7 +171,7 @@
       card.replaceChildren(
         el("h2", {}, "An agent needs your decision"),
         el("p", { class: "hint" }, "Review the request below, then approve or deny it."),
-        el("dl", { class: "facts" }, factRows(context)),
+        ...factSections(context).filter(Boolean),
         renderDecision(context),
         el("details", { class: "raw" },
           el("summary", {}, "Raw request"),

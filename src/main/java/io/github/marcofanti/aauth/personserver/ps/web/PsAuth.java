@@ -5,8 +5,10 @@ import io.github.marcofanti.aauth.personserver.ps.AgentTokenRejectException;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.web.HttpSigAuth.SignedRequest;
 import io.github.marcofanti.aauth.personserver.web.HttpError;
+import io.github.marcofanti.aauth.personserver.web.SignatureError;
 import io.github.marcofanti.aauth.personserver.web.UnsupportedSchemeError;
 import io.github.marcofanti.aauth.signing.HttpSignatureException;
+import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.SignatureKeyHeader;
 import java.util.Locale;
 import java.util.Map;
@@ -16,7 +18,13 @@ public final class PsAuth {
 
     /** Context for {@code POST /token}: scheme=jwt when secure; HWK / stub headers in insecure dev. */
     public record TokenAgentContext(
-            String agentId, String agentJkt, Map<String, Object> agentCnfJwk, boolean secureMode) {}
+            String agentId,
+            String agentJkt,
+            Map<String, Object> agentCnfJwk,
+            boolean secureMode,
+            String agentIss,
+            Long agentTokenExp,
+            String agentToken) {}
 
     private final PsSettings settings;
     private final PsContainer ps;
@@ -57,7 +65,7 @@ public final class PsAuth {
         // aa-agent+jwt in Signature-Key (scheme=jwt), which requires JWKS resolution.
         if ("jwt".equals(scheme)) {
             try {
-                return HttpSigAuth.verifyAgentJwtRequest(request, ps.agentJwksResolver(), false)
+                return admit(HttpSigAuth.verifyAgentJwtRequest(request, ps.agentJwksResolver(), false))
                         .agentId();
             } catch (IllegalArgumentException e) {
                 throw new HttpError(401, e.getMessage());
@@ -80,7 +88,7 @@ public final class PsAuth {
         if (settings.insecureDev()) {
             String stubId = request.header("x-aauth-agent-id");
             if (stubId != null && !stubId.isEmpty()) {
-                return new TokenAgentContext(stubId, null, null, false);
+                return new TokenAgentContext(stubId, null, null, false, null, null, null);
             }
             if (request.hasSignatureHeaders()) {
                 if (!HttpSigAuth.verifySignature(request)) {
@@ -90,7 +98,7 @@ public final class PsAuth {
                 if (!"hwk".equals(parsed.scheme())) {
                     throw new HttpError(401, "Insecure dev token request: use scheme=hwk or X-AAuth-Agent-Id");
                 }
-                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false);
+                return new TokenAgentContext(hwkThumbprintOr401(parsed), null, null, false, null, null, null);
             }
             throw new HttpError(401, "Insecure dev: send X-AAuth-Agent-Id or an HWK-signed request for POST /token");
         }
@@ -111,6 +119,10 @@ public final class PsAuth {
                     "POST /token requires Signature-Key scheme=jwt when AAUTH_PS_INSECURE_DEV is false",
                     ErrorCodes.ERROR_INVALID_SIGNATURE);
         }
+        if (HttpSigAuth.createdAheadOfClock(request)) {
+            throw new AgentTokenRejectException(
+                    "signature created is ahead of the server clock", SignatureError.CLOCK_SKEW);
+        }
 
         HttpSigAuth.VerifiedAgent verified;
         try {
@@ -119,16 +131,43 @@ public final class PsAuth {
             String message = e.getMessage() == null ? "invalid agent token" : e.getMessage();
             String lower = message.toLowerCase(Locale.ROOT);
             if (lower.contains("agent token expired") || lower.contains("expiredsignature")) {
-                throw new AgentTokenRejectException(message, ErrorCodes.ERROR_EXPIRED_AGENT_TOKEN);
+                throw new AgentTokenRejectException(message, AgentTokenRejectException.EXPIRED_AGENT_TOKEN);
             }
             if (lower.contains("http signature verification failed")
                     || lower.contains("missing http signature")
                     || lower.contains("signature-key must use scheme=jwt")) {
                 throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_SIGNATURE);
             }
-            throw new AgentTokenRejectException(message, ErrorCodes.ERROR_INVALID_AGENT_TOKEN);
+            throw new AgentTokenRejectException(message, AgentTokenRejectException.INVALID_AGENT_TOKEN);
         }
-        return new TokenAgentContext(verified.agentId(), verified.agentJkt(), verified.agentCnfJwk(), true);
+        admit(verified);
+        Long agentTokenExp = Jwts.parse(verified.agentTokenJwt()).numericClaim("exp");
+        return new TokenAgentContext(
+                verified.agentId(),
+                verified.agentJkt(),
+                verified.agentCnfJwk(),
+                true,
+                verified.agentIss(),
+                agentTokenExp,
+                verified.agentTokenJwt());
+    }
+
+    /**
+     * Refuse an agent token its provider revoked (§11.12.5), and otherwise remember its
+     * {@code (iss, jti)} and {@code sub} so a later revocation can cascade (§11.12.4 Records).
+     */
+    private HttpSigAuth.VerifiedAgent admit(HttpSigAuth.VerifiedAgent verified) {
+        Jwts.Decoded token = Jwts.parse(verified.agentTokenJwt());
+        String jti = token.claim("jti");
+        Long exp = token.numericClaim("exp");
+        if (jti == null || exp == null) {
+            return verified;
+        }
+        if (ps.revocations().isRevoked(verified.agentIss(), jti)) {
+            throw new SignatureError("revoked_jwt", "the agent provider has revoked this agent token");
+        }
+        ps.revocations().recordAgentToken(verified.agentIss(), jti, verified.agentId(), exp);
+        return verified;
     }
 
     private static SignatureKeyHeader.Parsed parseSignatureKey(String headerValue) {

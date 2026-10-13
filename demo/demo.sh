@@ -10,13 +10,19 @@
 #   demo/demo.sh                 # interactive: you approve in the UI
 #   AUTO=1 demo/demo.sh          # unattended: approvals via API
 #   OPEN=1 demo/demo.sh          # also open UI pages in the browser (macOS)
-#   BASE=http://127.0.0.1:8765 ADMIN_TOKEN=demo-admin demo/demo.sh
+#   BASE=https://ps.uma.lab ADMIN_TOKEN=demo-admin demo/demo.sh
 #
 # Requires: curl, openssl, python3.
 set -euo pipefail
 
-BASE="${BASE:-http://127.0.0.1:8765}"
+BASE="${BASE:-https://ps.uma.lab}"
 BASE="${BASE%/}"
+# The *.uma.lab certificate comes from mkcert's local CA, which curl does not trust by default.
+CURL_TLS=()
+if [[ $BASE == https://* ]] && command -v mkcert >/dev/null; then
+  CURL_TLS=(--cacert "$(mkcert -CAROOT)/rootCA.pem")
+fi
+curl() { command curl "${CURL_TLS[@]+"${CURL_TLS[@]}"}" "$@"; }
 ADMIN_TOKEN="${ADMIN_TOKEN:-demo-admin}"
 AUTO="${AUTO:-0}"
 OPEN="${OPEN:-0}"
@@ -97,7 +103,7 @@ sig_headers() {
   # $1: base64url x of the signing (ephemeral) public key
   SIG_INPUT="sig=(\"@method\" \"@authority\" \"@path\" \"signature-key\");created=$(date +%s)"
   SIG="sig=:$(head -c 64 /dev/zero | base64 | tr -d '\n'):"
-  SIG_KEY="sig=hwk;kty=\"OKP\";crv=\"Ed25519\";x=\"$1\""
+  SIG_KEY="sig=hwk;kty=\"OKP\";crv=\"Ed25519\";alg=\"Ed25519\";x=\"$1\""
 }
 
 agent_req() {
@@ -167,7 +173,7 @@ status=$(curl -sS -D "$WORK/headers" -o "$WORK/body" -w '%{http_code}' \
   -X POST "${BASE}/register" \
   -H 'Content-Type: application/json' \
   -H "Signature-Input: ${SIG_INPUT}" -H "Signature: ${SIG}" -H "Signature-Key: ${SIG_KEY}" \
-  -d "{\"stable_pub\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"${STABLE_X}\"},\"agent_name\":\"Concierge (laptop)\"}")
+  -d "{\"stable_pub\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"alg\":\"Ed25519\",\"x\":\"${STABLE_X}\"},\"agent_name\":\"Concierge (laptop)\"}")
 [ "$status" = "202" ] || {
   show_json "$WORK/body"
   fail "POST /register → HTTP ${status} (expected 202)"

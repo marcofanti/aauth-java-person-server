@@ -30,7 +30,7 @@ class RecordShapesTest {
 
     @Test
     void metadataRecordsConstruct() {
-        assertThat(new PSMetadata("i", "t", "m", null, null, null, null, "j").issuer())
+        assertThat(new PSMetadata("i", "t", "a", "p", "m", null, null, null, null, null, "j").issuer())
                 .isEqualTo("i");
         assertThat(new ASMetadata("i", "t", "j").tokenEndpoint()).isEqualTo("t");
         assertThat(new AgentServerMetadata("i", "j", "n", "r", "f").clientName())

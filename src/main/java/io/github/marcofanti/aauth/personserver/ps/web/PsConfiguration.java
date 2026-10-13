@@ -40,6 +40,14 @@ public class PsConfiguration {
     /** Shared translation of settings into wiring options (portal reuses with self JWKS). */
     public static PsWiring.Options buildOptions(
             PsSettings settings, java.util.function.Supplier<Map<String, Object>> selfJwksProvider) {
+        return buildOptions(settings, selfJwksProvider, null);
+    }
+
+    /** As above, for a portal whose Agent Server has its own origin {@code selfAgentIssuer}. */
+    public static PsWiring.Options buildOptions(
+            PsSettings settings,
+            java.util.function.Supplier<Map<String, Object>> selfJwksProvider,
+            String selfAgentIssuer) {
         return PsWiring.Options.builder(settings.origin())
                 .autoApproveToken(settings.autoApproveToken())
                 .autoApproveMission(settings.autoApproveMission())
@@ -53,6 +61,8 @@ public class PsConfiguration {
                 .insecureDev(settings.insecureDev())
                 .selfJwksProvider(selfJwksProvider)
                 .missionEvaluator(settings.missionEvaluator())
+                .missionLifetimeSeconds(settings.missionLifetimeSeconds())
+                .selfAgentIssuer(selfAgentIssuer)
                 .build();
     }
 

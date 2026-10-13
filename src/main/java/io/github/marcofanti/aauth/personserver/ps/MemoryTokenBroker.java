@@ -14,12 +14,14 @@ import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
+import io.github.marcofanti.aauth.signing.Jwts;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ public final class MemoryTokenBroker implements TokenBroker {
     private final String psOrigin;
     private final AuthTokenIssuer authIssuer;
     private final Function<String, Map<String, Object>> resourceJwks;
+    private final Draft11Checks draft11Checks;
     private final ConsentScopeStore consentScopes;
     private final String agentJwtStub;
     private final boolean autoApproveWithoutConsent;
@@ -52,17 +55,29 @@ public final class MemoryTokenBroker implements TokenBroker {
             ConsentScopeStore consentScopes,
             String agentJwtStub,
             boolean autoApproveWithoutConsent,
-            MissionEvaluator evaluator) {
+            MissionEvaluator evaluator,
+            RevocationStore revocations,
+            UpstreamTokens upstreamTokens) {
         this.store = store;
         this.federator = federator;
         this.mission = mission;
         this.psOrigin = IssuerUrls.normalizeIssuer(psOrigin);
         this.authIssuer = authIssuer;
         this.resourceJwks = resourceJwks;
+        this.draft11Checks =
+                new Draft11Checks(psOrigin, resourceJwks, iss -> authIssuer.jwks(), revocations, upstreamTokens);
         this.consentScopes = consentScopes;
         this.agentJwtStub = agentJwtStub;
         this.autoApproveWithoutConsent = autoApproveWithoutConsent;
         this.evaluator = evaluator;
+    }
+
+    /** §10.1.1: a pending downstream request ends {@code expired} when its upstream token does. */
+    private static Long upstreamDeadline(TokenRequest request) {
+        if (request.draft11() == null || request.upstreamToken() == null) {
+            return null;
+        }
+        return Jwts.parse(request.upstreamToken()).numericClaim("exp");
     }
 
     /** Replace the Layer 1 evaluator (tests exercise forced allow/deny/clarify paths). */
@@ -72,7 +87,7 @@ public final class MemoryTokenBroker implements TokenBroker {
 
     private Map<String, Object> verifyResourceToken(String resourceToken, String agentId, String agentJkt) {
         try {
-            return ResourceTokens.verify(resourceToken, resourceJwks, null, agentId, agentJkt);
+            return ResourceTokenVerifier.verify(resourceToken, resourceJwks, agentId, agentJkt);
         } catch (TokenException e) {
             log.info("resource token verification failed: {}", e.getMessage());
             String code = e.getMessage() != null
@@ -90,6 +105,9 @@ public final class MemoryTokenBroker implements TokenBroker {
         }
         String aud = IssuerUrls.normalizeAudClaim(resourceClaims.get("aud"));
         if (!IssuerUrls.issuerUrlsEquivalent(aud, psOrigin)) {
+            if (request.draft11() != null) {
+                return federator.federateDraft11(request, resourceClaims);
+            }
             return federator.requestAuthToken(request.resourceToken(), agentJwtStub, request.upstreamToken());
         }
         if (request.agentCnfJwk() == null) {
@@ -101,11 +119,15 @@ public final class MemoryTokenBroker implements TokenBroker {
                 resourceClaims,
                 request.mission(),
                 request.justification(),
-                "autonomous"));
+                "autonomous",
+                Draft11Checks.maxExp(request, mission)));
     }
 
     @Override
     public TokenOutcome requestToken(TokenRequest request) {
+        if (request.draft11() != null) {
+            return requestDraft11(request);
+        }
         if (request.mission() != null) {
             MissionGuards.requireActiveMission(mission, request.mission());
         }
@@ -114,7 +136,29 @@ public final class MemoryTokenBroker implements TokenBroker {
         if (request.secureMode()) {
             resourceClaims = verifyResourceToken(request.resourceToken(), request.agentId(), request.agentJkt());
         }
+        return decide(request, resourceClaims);
+    }
 
+    /**
+     * Draft-11 (§7.2.1): verify the resource token and the presented token together; the mission
+     * comes from the verified resource token's {@code mission_s256}, not from the request body.
+     */
+    private TokenOutcome requestDraft11(TokenRequest request) {
+        Map<String, Object> resourceClaims = draft11Checks.verify(request);
+        TokenRequest bound = request;
+        if (resourceClaims.get("mission_s256") instanceof String missionS256) {
+            Mission found = mission.getMission(missionS256);
+            if (found == null) {
+                throw new ProblemError(400, "invalid_resource_token", "mission_s256 names no known mission");
+            }
+            new Draft11MissionStatus(mission).requireActive(found);
+            bound = request.withMission(new MissionRef(psOrigin, missionS256));
+        }
+        return decide(bound, resourceClaims);
+    }
+
+    /** Layer 1 evaluation, then consent scopes, then issue or defer (shared by both drafts). */
+    private TokenOutcome decide(TokenRequest request, Map<String, Object> resourceClaims) {
         // Layer 1 — mission-aware evaluation. Runs whenever the request carries a mission
         // and an evaluator is wired, in both insecure and secure modes. The evaluator's
         // verdict overrides scope-based and auto shortcircuits below.
@@ -163,6 +207,8 @@ public final class MemoryTokenBroker implements TokenBroker {
         if (evaluatorReason != null) {
             record.evaluatorReason = evaluatorReason;
         }
+        record.deadline = upstreamDeadline(request);
+        store.saveRecord(record);
         store.updatePending(pendingId, PendingUpdate.ofRequirement(RequirementLevel.INTERACTION));
         PendingStoreValue value = store.getPending(pendingId, false);
         if (!(value instanceof TokenOutcome outcome)) {
@@ -208,6 +254,8 @@ public final class MemoryTokenBroker implements TokenBroker {
                 record.verifiedResourceClaims = emptyToNull(resourceClaims);
                 record.tokenAgentCnfJwk = request.agentCnfJwk();
                 record.evaluatorReason = decision.reason();
+                record.deadline = upstreamDeadline(request);
+                store.saveRecord(record);
                 store.updatePending(
                         pendingId,
                         new PendingUpdate(
@@ -257,6 +305,7 @@ public final class MemoryTokenBroker implements TokenBroker {
         }
         record.clarificationResponses.add(responseText);
         record.clarificationRound++;
+        store.saveRecord(record);
         if (record.tokenRequest != null && record.tokenRequest.mission() != null) {
             MissionRef ref = record.tokenRequest.mission();
             mission.appendMissionLog(
@@ -274,15 +323,56 @@ public final class MemoryTokenBroker implements TokenBroker {
 
     @Override
     public DeferredResponse postUpdatedRequest(
-            String pendingId, String agentId, String newResourceToken, String justification) {
+            String pendingId, String agentId, String newResourceToken, String justification, String presentedToken) {
         store.assertAgentOwnsPending(pendingId, agentId);
-        store.replaceTokenRequest(pendingId, newResourceToken, justification);
+        PendingRecord before = store.getRecord(pendingId);
+        if (before.tokenRequest != null && before.tokenRequest.draft11() != null) {
+            return updateDraft11(pendingId, before, newResourceToken, justification, presentedToken);
+        }
+        store.replaceTokenRequest(pendingId, newResourceToken, justification, null);
         PendingRecord record = store.getRecord(pendingId);
         TokenRequest tokenRequest = record.tokenRequest;
         if (tokenRequest != null && tokenRequest.secureMode()) {
             record.verifiedResourceClaims =
                     verifyResourceToken(newResourceToken, tokenRequest.agentId(), tokenRequest.agentJkt());
+            store.saveRecord(record);
         }
+        store.updatePending(
+                pendingId, new PendingUpdate(PendingStatus.PENDING, RequirementLevel.INTERACTION, null, null, null));
+        PendingStoreValue out = store.getPending(pendingId, false);
+        if (out instanceof DeferredResponse deferred) {
+            return deferred;
+        }
+        throw new IllegalStateException("unexpected terminal state after updated request");
+    }
+
+    /**
+     * §7.5.2.2: verify the new resource token with its presented token, and require it to match
+     * the original's issuer, person server, person, agent key, mission and tenant before
+     * replacing anything.
+     */
+    private DeferredResponse updateDraft11(
+            String pendingId,
+            PendingRecord before,
+            String newResourceToken,
+            String justification,
+            String presentedToken) {
+        TokenRequest candidate =
+                before.tokenRequest.withUpdatedRequest(newResourceToken, justification, presentedToken);
+        Map<String, Object> updated = draft11Checks.verify(candidate);
+        Map<String, Object> original = before.verifiedResourceClaims != null
+                ? before.verifiedResourceClaims
+                : draft11Checks.verify(before.tokenRequest);
+        for (String claim : List.of("iss", "ps", "sub", "agent_jkt", "mission_s256", "tenant")) {
+            if (!Objects.equals(original.get(claim), updated.get(claim))) {
+                throw new ProblemError(
+                        400, "invalid_resource_token", "updated resource token changes " + claim + " (§7.5.2.2)");
+            }
+        }
+        store.replaceTokenRequest(pendingId, newResourceToken, justification, presentedToken);
+        PendingRecord record = store.getRecord(pendingId);
+        record.verifiedResourceClaims = updated;
+        store.saveRecord(record);
         store.updatePending(
                 pendingId, new PendingUpdate(PendingStatus.PENDING, RequirementLevel.INTERACTION, null, null, null));
         PendingStoreValue out = store.getPending(pendingId, false);

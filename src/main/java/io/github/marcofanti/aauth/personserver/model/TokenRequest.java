@@ -20,7 +20,51 @@ public record TokenRequest(
         MissionRef mission,
         Map<String, Object> agentCnfJwk,
         String agentJkt,
-        boolean secureMode) {
+        boolean secureMode,
+        Draft11 draft11) {
+
+    /**
+     * Draft-11 request context (§7.2.1); {@code null} for a draft-10 request. {@code presentedToken}
+     * is the person or auth token the agent presented to the resource; {@code agentToken} is the
+     * agent token from {@code Signature-Key}, forwarded when the PS federates to an AS (§9.1.1).
+     */
+    public record Draft11(String presentedToken, Long agentTokenExp, String agentToken) {}
+
+    /** The same request bound to {@code missionRef} (draft-11: taken from the verified resource token). */
+    public TokenRequest withMission(MissionRef missionRef) {
+        return new TokenRequest(
+                agentId,
+                resourceToken,
+                justification,
+                upstreamToken,
+                loginHint,
+                tenant,
+                domainHint,
+                missionRef,
+                agentCnfJwk,
+                agentJkt,
+                secureMode,
+                draft11);
+    }
+
+    /** The same request with an updated resource token (§7.5.2.2), keeping every other field. */
+    public TokenRequest withUpdatedRequest(String newResourceToken, String newJustification, String presentedToken) {
+        Draft11 updated =
+                draft11 == null ? null : new Draft11(presentedToken, draft11.agentTokenExp(), draft11.agentToken());
+        return new TokenRequest(
+                agentId,
+                newResourceToken,
+                newJustification,
+                upstreamToken,
+                loginHint,
+                tenant,
+                domainHint,
+                mission,
+                agentCnfJwk,
+                agentJkt,
+                secureMode,
+                updated);
+    }
 
     public static Builder builder(String agentId, String resourceToken) {
         return new Builder(agentId, resourceToken);
@@ -38,6 +82,7 @@ public record TokenRequest(
         private Map<String, Object> agentCnfJwk;
         private String agentJkt;
         private boolean secureMode = true;
+        private Draft11 draft11;
 
         private Builder(String agentId, String resourceToken) {
             this.agentId = agentId;
@@ -89,6 +134,11 @@ public record TokenRequest(
             return this;
         }
 
+        public Builder draft11(Draft11 draft11) {
+            this.draft11 = draft11;
+            return this;
+        }
+
         public TokenRequest build() {
             return new TokenRequest(
                     agentId,
@@ -101,7 +151,8 @@ public record TokenRequest(
                     mission,
                     agentCnfJwk,
                     agentJkt,
-                    secureMode);
+                    secureMode,
+                    draft11);
         }
     }
 }

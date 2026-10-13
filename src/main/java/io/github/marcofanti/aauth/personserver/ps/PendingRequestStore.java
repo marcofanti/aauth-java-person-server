@@ -3,10 +3,12 @@ package io.github.marcofanti.aauth.personserver.ps;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Backing store for pending URLs; not exposed as public REST
@@ -69,6 +71,12 @@ public interface PendingRequestStore {
     String createPermissionPending(PermissionPendingSpec spec);
 
     /**
+     * Deferred first-use approval for a draft-11 person token request (§7.1); opens with
+     * {@code requirement=interaction}.
+     */
+    String createPersonTokenPending(PersonTokenRequest request, String ownerId);
+
+    /**
      * Return current deferred snapshot or terminal success (token or mission).
      * {@code forPoll} enables polling semantics (rate limiting) for GET on the pending URL.
      */
@@ -98,15 +106,27 @@ public interface PendingRequestStore {
     /** Pending record including internal fields (implementation helper). */
     PendingRecord getRecord(String pendingId);
 
+    /**
+     * Persist fields set directly on a record from {@link #getRecord}; a SQL store returns a
+     * fresh copy on each read, so in-place changes are lost without this.
+     */
+    void saveRecord(PendingRecord record);
+
     String getInteractionCode(String pendingId);
 
-    /** Swap the resource token / justification on a token pending (updated request). */
-    void replaceTokenRequest(String pendingId, String resourceToken, String justification);
+    /**
+     * Swap the resource token / justification on a token pending (updated request); a draft-11
+     * request also swaps its presented token (§7.5.2.2).
+     */
+    void replaceTokenRequest(String pendingId, String resourceToken, String justification, String presentedToken);
 
     String interactionBaseUrl();
 
     /** Pending rows awaiting user interaction, scoped to legal owner. */
     List<PendingRecord> listInteractionPendingForOwner(String ownerId);
+
+    /** Ids of open pendings matching {@code filter} (revocation ends the ones that depend on a token). */
+    List<String> openPending(Predicate<PendingRecord> filter);
 
     /** All in-flight pending rows (not gone, not resolved, not failed). */
     List<Map<String, Object>> listOpenPendingForAdmin();

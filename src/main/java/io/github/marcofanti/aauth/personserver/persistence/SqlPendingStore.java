@@ -5,6 +5,7 @@ import io.github.marcofanti.aauth.personserver.model.DeferredResponse;
 import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.InvalidInteractionCodeException;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -165,6 +167,18 @@ public final class SqlPendingStore implements PendingRequestStore {
         return record.pendingId;
     }
 
+    @Override
+    public String createPersonTokenPending(PersonTokenRequest request, String ownerId) {
+        PendingRecord record = new PendingRecord(newId(), newCode(), "person_token", Instant.now(), defaultTtlSeconds);
+        record.ownerId = ownerId;
+        record.pendingAgentId = request.agentId();
+        record.missionS256 = request.missionS256();
+        record.personTokenRequest = request;
+        record.requirement = RequirementLevel.INTERACTION;
+        insert(record);
+        return record.pendingId;
+    }
+
     private static String newId() {
         return MemoryPendingStore.newPendingId();
     }
@@ -184,6 +198,11 @@ public final class SqlPendingStore implements PendingRequestStore {
 
     private void checkTtl(PendingRecord record) {
         if (!isOpen(record)) {
+            return;
+        }
+        if (record.deadline != null && Instant.now().getEpochSecond() >= record.deadline) {
+            failPending(record.pendingId, "expired");
+            record.failure = "expired";
             return;
         }
         long elapsed = Duration.between(record.createdAt, Instant.now()).toSeconds();
@@ -334,24 +353,13 @@ public final class SqlPendingStore implements PendingRequestStore {
     }
 
     @Override
-    public void replaceTokenRequest(String pendingId, String resourceToken, String justification) {
+    public void replaceTokenRequest(
+            String pendingId, String resourceToken, String justification, String presentedToken) {
         PendingRecord record = require(pendingId);
         if (record.tokenRequest == null) {
             throw new IllegalStateException("not a token pending");
         }
-        TokenRequest previous = record.tokenRequest;
-        record.tokenRequest = new TokenRequest(
-                previous.agentId(),
-                resourceToken,
-                justification,
-                previous.upstreamToken(),
-                previous.loginHint(),
-                previous.tenant(),
-                previous.domainHint(),
-                previous.mission(),
-                previous.agentCnfJwk(),
-                previous.agentJkt(),
-                previous.secureMode());
+        record.tokenRequest = record.tokenRequest.withUpdatedRequest(resourceToken, justification, presentedToken);
         save(record);
     }
 
@@ -371,6 +379,25 @@ public final class SqlPendingStore implements PendingRequestStore {
             out.add(record);
         }
         out.sort(Comparator.comparing(record -> record.pendingId));
+        return out;
+    }
+
+    @Override
+    public void saveRecord(PendingRecord record) {
+        save(record);
+    }
+
+    @Override
+    public List<String> openPending(Predicate<PendingRecord> filter) {
+        List<String> rows = jdbc.query(
+                "SELECT record_json FROM ps_pending WHERE is_open = TRUE", (rs, rowNum) -> rs.getString("record_json"));
+        List<String> out = new ArrayList<>();
+        for (String json : rows) {
+            PendingRecord record = PendingSerde.recordFromDict(Json.readMap(json));
+            if (isOpen(record) && filter.test(record)) {
+                out.add(record.pendingId);
+            }
+        }
         return out;
     }
 

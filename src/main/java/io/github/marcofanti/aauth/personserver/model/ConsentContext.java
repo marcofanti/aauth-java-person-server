@@ -30,7 +30,9 @@ public record ConsentContext(
         String permissionAction,
         String permissionDescription,
         Map<String, Object> permissionParameters,
-        String evaluatorReason) {
+        String evaluatorReason,
+        String resourceDescription,
+        String resourceAccessMode) {
 
     public static Builder builder(String pendingId) {
         return new Builder(pendingId);
@@ -55,6 +57,8 @@ public record ConsentContext(
         private String permissionDescription;
         private Map<String, Object> permissionParameters;
         private String evaluatorReason;
+        private String resourceDescription;
+        private String resourceAccessMode;
 
         private Builder(String pendingId) {
             this.pendingId = pendingId;
@@ -145,6 +149,16 @@ public record ConsentContext(
             return this;
         }
 
+        public Builder resourceDescription(String resourceDescription) {
+            this.resourceDescription = resourceDescription;
+            return this;
+        }
+
+        public Builder resourceAccessMode(String resourceAccessMode) {
+            this.resourceAccessMode = resourceAccessMode;
+            return this;
+        }
+
         public ConsentContext build() {
             return new ConsentContext(
                     pendingId,
@@ -164,7 +178,9 @@ public record ConsentContext(
                     permissionAction,
                     permissionDescription,
                     permissionParameters,
-                    evaluatorReason);
+                    evaluatorReason,
+                    resourceDescription,
+                    resourceAccessMode);
         }
     }
 }

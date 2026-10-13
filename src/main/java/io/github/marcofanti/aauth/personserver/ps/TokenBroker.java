@@ -20,9 +20,12 @@ public interface TokenBroker {
     /** POST {@code clarification_response} to pending URL. */
     DeferredResponse postClarificationResponse(String pendingId, String agentId, String responseText);
 
-    /** POST updated {@code resource_token} to pending URL. */
+    /**
+     * POST updated {@code resource_token} to pending URL; a draft-11 pending also requires the
+     * {@code presented_token} the new resource token names (§7.5.2.2).
+     */
     DeferredResponse postUpdatedRequest(
-            String pendingId, String agentId, String newResourceToken, String justification);
+            String pendingId, String agentId, String newResourceToken, String justification, String presentedToken);
 
     /** DELETE pending URL — withdraw request. */
     void cancelRequest(String pendingId, String agentId);

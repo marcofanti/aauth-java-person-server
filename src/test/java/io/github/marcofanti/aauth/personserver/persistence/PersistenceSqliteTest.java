@@ -45,7 +45,7 @@ class PersistenceSqliteTest {
     private static PsContainer ps(DbHolder db) {
         return PersistedWiring.buildPersistedPs(
                 db.dataSource(),
-                PsWiring.Options.builder("http://test.example")
+                PsWiring.Options.builder("https://test.example")
                         .signingKeyPath(null)
                         .trustFile(null)
                         .consentScopesFile(null)
@@ -57,7 +57,7 @@ class PersistenceSqliteTest {
         return PersistedWiring.buildPersistedAs(
                 db.dataSource(),
                 new AsContainer.MemoryOptions(
-                        "http://test.example", "localhost", null, null, 86400, 3600, 60, "http://test.example"));
+                        "https://test.example", "localhost", null, null, 86400, 3600, 60, "https://test.example"));
     }
 
     @Test
@@ -119,8 +119,14 @@ class PersistenceSqliteTest {
 
     @Test
     void registrationsBindingsAndTokensSurviveRestart() {
-        Map<String, Object> ephemeralPub = Map.of("kty", "OKP", "crv", "Ed25519", "x", "AAAA");
-        Map<String, Object> stablePub = Map.of("kty", "OKP", "crv", "Ed25519", "x", "BBBB");
+        Map<String, Object> ephemeralPub = io.github.marcofanti.aauth.signing.keys.Jwk.publicKeyToJwk(
+                io.github.marcofanti.aauth.signing.keys.KeyPairs.generateEd25519()
+                        .getPublic(),
+                "eph");
+        Map<String, Object> stablePub = io.github.marcofanti.aauth.signing.keys.Jwk.publicKeyToJwk(
+                io.github.marcofanti.aauth.signing.keys.KeyPairs.generateEd25519()
+                        .getPublic(),
+                "stable");
         String pendingId;
         String agentId;
         try (DbHolder db = holder()) {

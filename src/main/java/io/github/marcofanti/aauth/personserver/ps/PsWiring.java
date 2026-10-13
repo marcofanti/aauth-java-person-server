@@ -1,11 +1,19 @@
 package io.github.marcofanti.aauth.personserver.ps;
 
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /** Builds the in-memory Person Server container ({@code build_memory_ps} in Python). */
 public final class PsWiring {
+
+    /** Directed-subject secret beside the PS signing key; in-memory when no key path is set. */
+    public static DirectedSubjects directedSubjects(String signingKeyPath) {
+        return signingKeyPath == null || signingKeyPath.isEmpty()
+                ? DirectedSubjects.ephemeral()
+                : DirectedSubjects.persistent(Path.of(signingKeyPath + ".subjects"));
+    }
 
     /** Wiring options; defaults mirror the Python keyword arguments. */
     public record Options(
@@ -22,7 +30,9 @@ public final class PsWiring {
             boolean insecureDev,
             Supplier<Map<String, Object>> selfJwksProvider,
             Function<String, Map<String, Object>> resourceJwks,
-            String missionEvaluator) {
+            String missionEvaluator,
+            Long missionLifetimeSeconds,
+            String selfAgentIssuer) {
 
         public static Builder builder(String publicOrigin) {
             return new Builder(publicOrigin);
@@ -43,6 +53,8 @@ public final class PsWiring {
             private Supplier<Map<String, Object>> selfJwksProvider;
             private Function<String, Map<String, Object>> resourceJwks;
             private String missionEvaluator;
+            private Long missionLifetimeSeconds;
+            private String selfAgentIssuer;
 
             private Builder(String publicOrigin) {
                 this.publicOrigin = publicOrigin;
@@ -113,6 +125,20 @@ public final class PsWiring {
                 return this;
             }
 
+            public Builder missionLifetimeSeconds(Long value) {
+                this.missionLifetimeSeconds = value;
+                return this;
+            }
+
+            /**
+             * Issuer of the co-located Agent Server when it has its own origin (portal with a
+             * distinct {@code AAUTH_AS_PUBLIC_ORIGIN}); its agent tokens verify with the self JWKS.
+             */
+            public Builder selfAgentIssuer(String value) {
+                this.selfAgentIssuer = value;
+                return this;
+            }
+
             public Options build() {
                 return new Options(
                         publicOrigin,
@@ -128,7 +154,9 @@ public final class PsWiring {
                         insecureDev,
                         selfJwksProvider,
                         resourceJwks,
-                        missionEvaluator);
+                        missionEvaluator,
+                        missionLifetimeSeconds,
+                        selfAgentIssuer);
             }
         }
     }
@@ -153,24 +181,52 @@ public final class PsWiring {
         };
     }
 
+    /** Call-chaining verification over the PS's own records (§9.4.5). */
+    public static UpstreamTokens upstreamTokens(
+            String origin,
+            PsSigningService psSigning,
+            PersonTokenLedger personTokens,
+            IssuedTokenStore authTokens,
+            RevocationStore revocations,
+            Function<String, Map<String, Object>> agentJwks) {
+        return new UpstreamTokens(
+                origin,
+                psSigning::getJwks,
+                iss -> {
+                    try {
+                        return SyncHttp.discoverJwksViaMetadata(iss, "aauth-access.json");
+                    } catch (IllegalArgumentException e) {
+                        return null;
+                    }
+                },
+                agentJwks,
+                new UpstreamTokens.Records(personTokens, authTokens, revocations));
+    }
+
     /** Wire in-memory stores, PS signing, trust registry, and token broker. */
     public static PsContainer buildMemoryPs(Options options) {
         PsBackend backend = new PsBackend();
         String origin = MissionUtils.stripTrailingSlash(options.publicOrigin());
         MemoryPendingStore store = new MemoryPendingStore(backend, origin, options.pendingTtlSeconds());
-        FakeAsFederator federator = new FakeAsFederator();
         PsSigningService psSigning = new PsSigningService(options.signingKeyPath());
+        PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
+        AsFederator federator = new HttpAsFederator(
+                new FakeAsFederator(), ServerHttp.personServer(origin, psSigning), personTokenLedger);
         MemoryAgentServerTrustRegistry trust = new MemoryAgentServerTrustRegistry(options.trustFile());
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
         Function<String, Map<String, Object>> resourceResolver =
                 options.resourceJwks() != null ? options.resourceJwks() : new ResourceJwksResolver();
-        AgentServerJwksResolver agentResolver = new AgentServerJwksResolver(origin, trust, options.selfJwksProvider());
+        AgentServerJwksResolver agentResolver =
+                new AgentServerJwksResolver(origin, options.selfAgentIssuer(), trust, options.selfJwksProvider());
         MemoryIssuedTokenStore issuedStore = new MemoryIssuedTokenStore();
         AuthTokenIssuer authIssuer =
                 new AuthTokenIssuer(origin, psSigning, options.userId(), options.authTokenLifetime(), issuedStore);
         PsGovernance governance = new PsGovernance(backend, store);
         MemoryMissionLifecycle lifecycle =
                 new MemoryMissionLifecycle(backend, store, origin, options.autoApproveMission());
+        RevocationStore revocations = new MemoryRevocationStore();
+        UpstreamTokens upstreamTokens =
+                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations, agentResolver);
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,
@@ -181,9 +237,20 @@ public final class PsWiring {
                 consentScopes,
                 options.agentJwtStub(),
                 options.autoApproveToken(),
-                buildEvaluator(options.missionEvaluator()));
+                buildEvaluator(options.missionEvaluator()),
+                revocations,
+                upstreamTokens);
+        PersonTokenIssuer personTokenIssuer = new PersonTokenIssuer(
+                origin, psSigning, PsWiring.directedSubjects(options.signingKeyPath()), personTokenLedger);
         MemoryUserConsent consent = new MemoryUserConsent(
-                backend, store, federator, authIssuer, options.agentJwtStub(), origin, resourceResolver);
+                backend,
+                store,
+                federator,
+                authIssuer,
+                options.agentJwtStub(),
+                origin,
+                resourceResolver,
+                personTokenIssuer);
         MemoryMissionControl control = new MemoryMissionControl(backend);
         return new PsContainer(
                 backend,
@@ -200,6 +267,10 @@ public final class PsWiring {
                 resourceResolver,
                 authIssuer,
                 issuedStore,
-                consentScopes);
+                consentScopes,
+                personTokenIssuer,
+                personTokenLedger,
+                revocations,
+                upstreamTokens);
     }
 }

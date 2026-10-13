@@ -10,12 +10,13 @@ import io.github.marcofanti.aauth.personserver.model.MissionLogEntry;
 import io.github.marcofanti.aauth.personserver.model.MissionLogKind;
 import io.github.marcofanti.aauth.personserver.model.MissionState;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
+import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
+import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -37,6 +38,7 @@ public final class MemoryUserConsent implements UserConsent {
     private final String agentJwtStub;
     private final String psIssuer;
     private final Function<String, Map<String, Object>> resourceJwks;
+    private final PersonTokenIssuer personTokenIssuer;
 
     public MemoryUserConsent(
             MissionStatePort mission,
@@ -45,7 +47,8 @@ public final class MemoryUserConsent implements UserConsent {
             AuthTokenIssuer authIssuer,
             String agentJwtStub,
             String psIssuer,
-            Function<String, Map<String, Object>> resourceJwks) {
+            Function<String, Map<String, Object>> resourceJwks,
+            PersonTokenIssuer personTokenIssuer) {
         this.mission = mission;
         this.store = store;
         this.federator = federator;
@@ -53,6 +56,7 @@ public final class MemoryUserConsent implements UserConsent {
         this.agentJwtStub = agentJwtStub;
         this.psIssuer = MissionUtils.stripTrailingSlash(psIssuer);
         this.resourceJwks = resourceJwks;
+        this.personTokenIssuer = personTokenIssuer;
     }
 
     /** Prefer a fresh verify of resource_token so aud / claims match JWT reality. */
@@ -60,14 +64,14 @@ public final class MemoryUserConsent implements UserConsent {
         if (!tokenRequest.secureMode()) {
             return null;
         }
+        // Draft-11 claims were verified with the presented token when the request was deferred.
+        if (tokenRequest.draft11() != null) {
+            return record.verifiedResourceClaims;
+        }
         if (resourceJwks != null) {
             try {
-                return ResourceTokens.verify(
-                        tokenRequest.resourceToken(),
-                        resourceJwks,
-                        null,
-                        tokenRequest.agentId(),
-                        tokenRequest.agentJkt());
+                return ResourceTokenVerifier.verify(
+                        tokenRequest.resourceToken(), resourceJwks, tokenRequest.agentId(), tokenRequest.agentJkt());
             } catch (TokenException e) {
                 log.info("consent: re-verify resource_token failed ({}), using stored claims if any", e.getMessage());
             }
@@ -108,6 +112,20 @@ public final class MemoryUserConsent implements UserConsent {
                     .resourceIss(resourceIss)
                     .resourceScope(resourceScope)
                     .resourceMissionS256(resourceMissionS256)
+                    .build();
+        }
+        if ("person_token".equals(record.kind) && record.personTokenRequest != null) {
+            // Draft-11 §7.1: the question is whether this agent may act at the resource as
+            // the person; name/description/access_mode are resource-asserted (metadata).
+            PersonTokenRequest request = record.personTokenRequest;
+            return ConsentContext.builder(record.pendingId)
+                    .pendingKind(record.kind)
+                    .mission(found)
+                    .justification(request.justification())
+                    .resourceIss(request.resource())
+                    .resourceName(request.resourceName())
+                    .resourceDescription(request.resourceDescription())
+                    .resourceAccessMode(request.resourceAccessMode())
                     .build();
         }
         if ("permission".equals(record.kind)) {
@@ -208,6 +226,16 @@ public final class MemoryUserConsent implements UserConsent {
             return resolveToken(pendingId, record);
         }
 
+        if ("person_token".equals(record.kind) && record.personTokenRequest != null) {
+            PersonTokenIssuer.Issued issued =
+                    personTokenIssuer.approveAndIssue(record.personTokenRequest, record.ownerId);
+            store.resolvePending(
+                    pendingId,
+                    new InteractionTerminalResult(
+                            Map.of("person_token", issued.personToken(), "expires_in", issued.expiresIn())));
+            return new DecisionResult(record.callbackUrl);
+        }
+
         if ("mission".equals(record.kind) && record.missionProposal != null) {
             Mission approved = MissionUtils.missionFromProposal(record.missionProposal, psIssuer);
             recordMission(approved);
@@ -223,6 +251,7 @@ public final class MemoryUserConsent implements UserConsent {
             Mission found = mission.getMission(record.missionS256);
             if (found != null && found.state() == MissionState.ACTIVE) {
                 mission.setMission(found.withState(MissionState.TERMINATED));
+                new Draft11MissionStatus(mission).recordReason(found, "completed");
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("event", "mission_completed");
                 payload.put("summary", record.interactionSummary);
@@ -255,7 +284,15 @@ public final class MemoryUserConsent implements UserConsent {
                         claims,
                         tokenRequest.mission(),
                         tokenRequest.justification(),
-                        "user_consent"));
+                        "user_consent",
+                        Draft11Checks.maxExp(tokenRequest, mission)));
+            } else if (tokenRequest.draft11() != null) {
+                try {
+                    auth = federator.federateDraft11(tokenRequest, claims);
+                } catch (ProblemError e) {
+                    store.failPending(pendingId, e.error());
+                    return new DecisionResult(record.callbackUrl);
+                }
             } else {
                 log.warn(
                         "consent: falling back to fake auth token (aud={} ps={} has_cnf={})",

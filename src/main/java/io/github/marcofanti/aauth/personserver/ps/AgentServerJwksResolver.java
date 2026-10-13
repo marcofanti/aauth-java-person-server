@@ -11,6 +11,7 @@ public final class AgentServerJwksResolver implements Function<String, Map<Strin
     private record CacheEntry(Map<String, Object> jwks, long storedNanos) {}
 
     private final String psOrigin;
+    private final String selfAgentIssuer;
     private final AgentServerTrustRegistry trust;
     private final Supplier<Map<String, Object>> selfJwksProvider;
     private final long ttlNanos;
@@ -18,15 +19,26 @@ public final class AgentServerJwksResolver implements Function<String, Map<Strin
 
     public AgentServerJwksResolver(
             String psOrigin, AgentServerTrustRegistry trust, Supplier<Map<String, Object>> selfJwksProvider) {
-        this(psOrigin, trust, selfJwksProvider, 300);
+        this(psOrigin, null, trust, selfJwksProvider);
+    }
+
+    /** {@code selfAgentIssuer}: the co-located Agent Server's own origin, or {@code null} if it shares the PS's. */
+    public AgentServerJwksResolver(
+            String psOrigin,
+            String selfAgentIssuer,
+            AgentServerTrustRegistry trust,
+            Supplier<Map<String, Object>> selfJwksProvider) {
+        this(psOrigin, selfAgentIssuer, trust, selfJwksProvider, 300);
     }
 
     public AgentServerJwksResolver(
             String psOrigin,
+            String selfAgentIssuer,
             AgentServerTrustRegistry trust,
             Supplier<Map<String, Object>> selfJwksProvider,
             long cacheTtlSeconds) {
         this.psOrigin = IssuerUrls.normalizeIssuer(psOrigin);
+        this.selfAgentIssuer = selfAgentIssuer == null ? null : IssuerUrls.normalizeIssuer(selfAgentIssuer);
         this.trust = trust;
         this.selfJwksProvider = selfJwksProvider;
         this.ttlNanos = cacheTtlSeconds * 1_000_000_000L;
@@ -47,7 +59,7 @@ public final class AgentServerJwksResolver implements Function<String, Map<Strin
     @Override
     public Map<String, Object> apply(String iss) {
         String normalized = IssuerUrls.normalizeIssuer(iss);
-        if (normalized.equals(psOrigin)) {
+        if (normalized.equals(psOrigin) || normalized.equals(selfAgentIssuer)) {
             if (selfJwksProvider == null) {
                 return null;
             }

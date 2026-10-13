@@ -25,7 +25,8 @@ public record PsSettings(
         int authTokenLifetime,
         String databaseUrl,
         String consentScopesFile,
-        String missionEvaluator) {
+        String missionEvaluator,
+        Long missionLifetimeSeconds) {
 
     private static final Logger log = LoggerFactory.getLogger(PsSettings.class);
 
@@ -46,12 +47,22 @@ public record PsSettings(
                 Integer.parseInt(env.getOrDefault("AAUTH_PS_AUTH_TOKEN_LIFETIME", "3600")),
                 emptyToNull(env.getOrDefault("AAUTH_PS_DATABASE_URL", env.getOrDefault("AAUTH_DATABASE_URL", ""))),
                 nullableWithDefault(env.get("AAUTH_PS_CONSENT_SCOPES_FILE"), ".aauth/consent-scopes.json"),
-                emptyToNull(env.get("AAUTH_PS_MISSION_EVALUATOR")));
+                emptyToNull(env.get("AAUTH_PS_MISSION_EVALUATOR")),
+                positiveLongOrNull(env.get("AAUTH_PS_MISSION_LIFETIME_SECONDS")));
         if (!settings.insecureDev() && settings.publicOrigin().startsWith("http://")) {
             log.warn("AAUTH_PS_PUBLIC_ORIGIN uses http:// while INSECURE_DEV=false; "
                     + "spec requires interaction URLs to use https in production.");
         }
         return settings;
+    }
+
+    /** Draft-11 mission lifetime (§8.2 expires_at); unset or 0 means missions never expire. */
+    static Long positiveLongOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        long parsed = Long.parseLong(value.strip());
+        return parsed > 0 ? parsed : null;
     }
 
     static boolean parseBool(String value) {
@@ -87,11 +98,14 @@ public record PsSettings(
         return new PSMetadata(
                 o,
                 o + "/token",
-                o + "/mission",
+                o + "/auth-token",
+                o + "/person-token",
+                o + "/agent-missions",
                 o + "/permission",
                 o + "/audit",
                 o + "/interaction",
                 o + "/missions",
+                o + "/revoke",
                 jwks);
     }
 }
