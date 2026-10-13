@@ -76,6 +76,12 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-10-13 — Egress gate**: all outbound HTTP goes through `ps.Egress`:
+  - HTTPS only, with no redirects.
+  - No internal addresses, unless the host matches `AAUTH_PS_EGRESS_ALLOW_HOSTS`.
+  - Bodies capped at 1 MiB, with 5-second timeouts.
+  Agents and resources choose many of the URLs the PS fetches, and the review flagged this as
+  the main remaining server-side request forgery risk.
 - **2026-10-12 — Local HTTPS front**: draft-11 identifiers are HTTPS origins without a port,
   so the portal listens on 127.0.0.1:8765 behind Caddy on :443 as `ps.uma.lab` (Person Server)
   and `as.uma.lab` (its Agent Server). The Caddyfile is shared byte-for-byte with
@@ -126,6 +132,10 @@ and the derived `aauth-java-person-server.pptx`.
   Revisit only if someone needs the PS core as a library.
 
 ## Deviations from the Python server
+
+- **Egress gate and `AAUTH_PS_EGRESS_ALLOW_HOSTS`**: the Python server fetches whatever URL a
+  token names. This server refuses non-HTTPS URLs and internal addresses unless the host is
+  allow-listed. This is the one environment variable without a Python counterpart.
 
 - **Union types → sealed interfaces**: Python's `TokenOutcome`/`MissionOutcome`/
   `PendingPollOutcome`/`PendingStoreValue` `Union`s become sealed marker interfaces so

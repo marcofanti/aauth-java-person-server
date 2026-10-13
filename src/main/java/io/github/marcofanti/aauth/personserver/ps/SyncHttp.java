@@ -2,7 +2,6 @@ package io.github.marcofanti.aauth.personserver.ps;
 
 import io.github.marcofanti.aauth.personserver.Json;
 import java.io.IOException;
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -10,33 +9,34 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-/** Synchronous JSON HTTP fetch for JWKS / metadata discovery. */
+/** Synchronous JSON HTTP fetch for JWKS / metadata discovery, through {@link Egress}. */
 public final class SyncHttp {
 
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
     private static final HttpClient CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
     private SyncHttp() {}
 
-    /** GET JSON from {@code url}. Allows http for localhost-style dev URLs. */
+    /** GET JSON from {@code url}; refused unless {@link Egress} admits it. */
     public static Map<String, Object> fetchJson(String url) {
-        HttpRequest request = HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
+        HttpRequest request = HttpRequest.newBuilder(Egress.target(url))
                 .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(15))
+                .timeout(TIMEOUT)
                 .GET()
                 .build();
         HttpResponse<String> response;
         try {
-            response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            response = CLIENT.send(request, Egress.cappedBody());
         } catch (IOException e) {
             throw new IllegalArgumentException("Failed to fetch " + url + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalArgumentException("Interrupted fetching " + url, e);
         }
-        if (response.statusCode() >= 400) {
+        if (response.statusCode() / 100 != 2) {
             throw new IllegalArgumentException("HTTP " + response.statusCode() + " fetching " + url);
         }
         return Json.readMap(response.body());
