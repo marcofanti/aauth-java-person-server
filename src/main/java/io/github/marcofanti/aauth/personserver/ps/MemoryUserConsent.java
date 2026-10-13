@@ -8,16 +8,19 @@ import io.github.marcofanti.aauth.personserver.model.InteractionTerminalResult;
 import io.github.marcofanti.aauth.personserver.model.Mission;
 import io.github.marcofanti.aauth.personserver.model.MissionLogEntry;
 import io.github.marcofanti.aauth.personserver.model.MissionLogKind;
+import io.github.marcofanti.aauth.personserver.model.MissionProposal;
 import io.github.marcofanti.aauth.personserver.model.MissionState;
 import io.github.marcofanti.aauth.personserver.model.PendingStatus;
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenOutcome;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
+import io.github.marcofanti.aauth.personserver.model.ToolSpec;
 import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.PendingRequestStore.PendingUpdate;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +42,7 @@ public final class MemoryUserConsent implements UserConsent {
     private final String psIssuer;
     private final Function<String, Map<String, Object>> resourceJwks;
     private final PersonTokenIssuer personTokenIssuer;
+    private final Draft11Missions draft11Missions;
 
     public MemoryUserConsent(
             MissionStatePort mission,
@@ -48,7 +52,8 @@ public final class MemoryUserConsent implements UserConsent {
             String agentJwtStub,
             String psIssuer,
             Function<String, Map<String, Object>> resourceJwks,
-            PersonTokenIssuer personTokenIssuer) {
+            PersonTokenIssuer personTokenIssuer,
+            Draft11Missions draft11Missions) {
         this.mission = mission;
         this.store = store;
         this.federator = federator;
@@ -56,6 +61,7 @@ public final class MemoryUserConsent implements UserConsent {
         this.agentJwtStub = agentJwtStub;
         this.psIssuer = MissionUtils.stripTrailingSlash(psIssuer);
         this.resourceJwks = resourceJwks;
+        this.draft11Missions = draft11Missions;
         this.personTokenIssuer = personTokenIssuer;
     }
 
@@ -126,6 +132,19 @@ public final class MemoryUserConsent implements UserConsent {
                     .resourceName(request.resourceName())
                     .resourceDescription(request.resourceDescription())
                     .resourceAccessMode(request.resourceAccessMode())
+                    .build();
+        }
+        if ("mission".equals(record.kind) && record.missionProposal != null) {
+            MissionProposal proposal = record.missionProposal;
+            List<String> tools = new ArrayList<>();
+            for (ToolSpec tool : proposal.tools() == null ? List.<ToolSpec>of() : proposal.tools()) {
+                tools.add(tool.name() + " — " + tool.description());
+            }
+            List<String> resources = record.draft11Mission == null ? List.of() : record.draft11Mission.resources();
+            return ConsentContext.builder(record.pendingId)
+                    .pendingKind(record.kind)
+                    .agentName(proposal.agentId())
+                    .proposal(proposal.description(), tools, resources)
                     .build();
         }
         if ("permission".equals(record.kind)) {
@@ -237,6 +256,12 @@ public final class MemoryUserConsent implements UserConsent {
                     pendingId,
                     new InteractionTerminalResult(
                             Map.of("person_token", issued.personToken(), "expires_in", issued.expiresIn())));
+            return new DecisionResult(record.callbackUrl);
+        }
+
+        if ("mission".equals(record.kind) && record.draft11Mission != null) {
+            Draft11Missions.Approval approval = draft11Missions.approve(record);
+            store.resolvePending(pendingId, new InteractionTerminalResult(approval.body()));
             return new DecisionResult(record.callbackUrl);
         }
 

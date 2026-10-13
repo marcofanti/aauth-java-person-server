@@ -148,8 +148,12 @@ endpoint lives at a new path (`/agent-missions`). Every draft-10 client (Python 
 `MissionClient`) hardcodes `POST /mission`, and no client discovers `mission_endpoint` from
 metadata, so advertising the new path is safe. A mission is draft-11 when its blob has no
 `approver`; termination reasons are logged only for draft-11 missions, keeping draft-10 logs
-identical to the reference. Known gap: draft-11 mission creation approves immediately (§8.1
-deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
+identical to the reference. Mission deferral (2026-10-13): with
+`AAUTH_PS_AUTO_APPROVE_MISSION=false`, `/agent-missions` answers 202 (`requirement=interaction`,
+the PS consent page and code); the consent page shows the proposal's description, tools and
+resources; approval creates the mission and the agent's poll returns the §8.2 body (`s256`,
+`mission`, person tokens; none when the agent token expired during review), denial ends the
+pending with `denied`. The default stays auto-approve, so nothing changes unless configured. New setting:
 `AAUTH_PS_MISSION_LIFETIME_SECONDS` sets `expires_at` (unset = no expiry).
 
 Revocation (2026-10-12, deferred completion 2026-10-13): downstream calls run in parallel with

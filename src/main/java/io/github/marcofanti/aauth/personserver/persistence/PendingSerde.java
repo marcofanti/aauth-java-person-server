@@ -14,6 +14,7 @@ import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.model.ToolSpec;
+import io.github.marcofanti.aauth.personserver.ps.Draft11Missions;
 import io.github.marcofanti.aauth.personserver.ps.PendingRecord;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -124,8 +125,36 @@ public final class PendingSerde {
         out.put("token_agent_cnf_jwk", record.tokenAgentCnfJwk);
         out.put("evaluator_reason", record.evaluatorReason);
         out.put("person_token_request", personTokenRequestToDict(record.personTokenRequest));
+        out.put("draft11_mission", draft11MissionToDict(record.draft11Mission));
         out.put("deadline", record.deadline);
         return out;
+    }
+
+    static Map<String, Object> draft11MissionToDict(Draft11Missions.PendingProposal proposal) {
+        if (proposal == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("agent_cnf_jwk", proposal.agentCnfJwk());
+        out.put("agent_token_exp", proposal.agentTokenExp());
+        out.put("resources", proposal.resources());
+        return out;
+    }
+
+    static Draft11Missions.PendingProposal draft11MissionFromDict(Map<String, Object> data) {
+        if (data == null) {
+            return null;
+        }
+        List<String> resources = new ArrayList<>();
+        if (data.get("resources") instanceof List<?> items) {
+            for (Object item : items) {
+                resources.add(String.valueOf(item));
+            }
+        }
+        return new Draft11Missions.PendingProposal(
+                mapOrNull(data.get("agent_cnf_jwk")),
+                data.get("agent_token_exp") instanceof Number exp ? exp.longValue() : null,
+                resources);
     }
 
     static Map<String, Object> personTokenRequestToDict(PersonTokenRequest request) {
@@ -241,6 +270,7 @@ public final class PendingSerde {
         record.tokenAgentCnfJwk = mapOrNull(data.get("token_agent_cnf_jwk"));
         record.evaluatorReason = stringOrNull(data.get("evaluator_reason"));
         record.personTokenRequest = personTokenRequestFromDict(mapOrNull(data.get("person_token_request")));
+        record.draft11Mission = draft11MissionFromDict(mapOrNull(data.get("draft11_mission")));
         record.deadline = data.get("deadline") instanceof Number n ? n.longValue() : null;
         return record;
     }

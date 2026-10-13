@@ -7,7 +7,7 @@ import java.util.Map;
  * What the consent UI shows the user for a pending decision.
  *
  * <p>{@code pendingKind} is {@code "token" | "mission" | "interaction"} — which deferred flow
- * this consent is for. The {@code resource*} fields come from a verified {@code aa-resource+jwt}
+ * this consent is for; the {@code proposal*} fields describe a mission proposal under review. The {@code resource*} fields come from a verified {@code aa-resource+jwt}
  * (mode 3); the {@code permission*} fields are set when the user is deciding a permission
  * request (Layer 2 — approved-tools gating); {@code evaluatorReason} is PS-evaluator guidance
  * (Layer 1 — mission-aware decisions).
@@ -32,7 +32,10 @@ public record ConsentContext(
         Map<String, Object> permissionParameters,
         String evaluatorReason,
         String resourceDescription,
-        String resourceAccessMode) {
+        String resourceAccessMode,
+        String proposalDescription,
+        List<String> proposalTools,
+        List<String> proposalResources) {
 
     public static Builder builder(String pendingId) {
         return new Builder(pendingId);
@@ -59,6 +62,9 @@ public record ConsentContext(
         private String evaluatorReason;
         private String resourceDescription;
         private String resourceAccessMode;
+        private String proposalDescription;
+        private List<String> proposalTools;
+        private List<String> proposalResources;
 
         private Builder(String pendingId) {
             this.pendingId = pendingId;
@@ -159,6 +165,14 @@ public record ConsentContext(
             return this;
         }
 
+        /** A mission proposal under review: its description, tools ("name — description") and resources. */
+        public Builder proposal(String description, List<String> tools, List<String> resources) {
+            this.proposalDescription = description;
+            this.proposalTools = tools;
+            this.proposalResources = resources;
+            return this;
+        }
+
         public ConsentContext build() {
             return new ConsentContext(
                     pendingId,
@@ -180,7 +194,10 @@ public record ConsentContext(
                     permissionParameters,
                     evaluatorReason,
                     resourceDescription,
-                    resourceAccessMode);
+                    resourceAccessMode,
+                    proposalDescription,
+                    proposalTools,
+                    proposalResources);
         }
     }
 }

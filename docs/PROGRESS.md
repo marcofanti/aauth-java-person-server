@@ -213,3 +213,6 @@ and the derived `aauth-java-person-server.pptx`.
   `claims` becomes the agent's pending (the AS's `url`/`code`, or its question). The PS polls
   the AS when the agent polls and forwards clarification answers (§9.1.2). The Python reference
   (draft-10) fakes federation, so there is no parity counterpart.
+- **Draft-11 mission deferral** (2026-10-13): `AAUTH_PS_AUTO_APPROVE_MISSION=false` now also
+  defers `/agent-missions` (§8.1 MAY) to the person; the agent polls for the §8.2 approval body.
+  Consent pages show mission proposals (description, tools, resources) for both drafts.
