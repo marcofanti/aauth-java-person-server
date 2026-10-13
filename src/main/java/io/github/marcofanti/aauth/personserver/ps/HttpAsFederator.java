@@ -149,6 +149,14 @@ public final class HttpAsFederator implements AsFederator {
             }
             base = pendingUrl;
         }
+        if (response.statusCode() == 402) {
+            // §9.1.2: the PS would settle payment per the AS's protocol; this PS has none.
+            log.info(
+                    "AS {} requires payment ({}); this PS does not settle payments",
+                    exchange.issuer(),
+                    response.headers().firstValue("WWW-Authenticate").orElse("no WWW-Authenticate"));
+            throw unreachable(exchange.issuer(), "the AS requires payment, which this PS does not settle");
+        }
         if (response.statusCode() != 200) {
             throw relayed(response, exchange.issuer());
         }
