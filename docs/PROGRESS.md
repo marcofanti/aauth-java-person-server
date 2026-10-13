@@ -200,3 +200,6 @@ and the derived `aauth-java-person-server.pptx`.
   agent tokens it minted in `IssuedAgentTokenStore` (`as_issued_agent_token` in SQL mode), so a
   binding revoked after a restart still revokes the tokens minted before it. The Python
   reference has no Agent Server token revocation, so there is no parity counterpart.
+- **Expired revocation and token records are purged** (2026-10-13): the stores drop rows 5
+  minutes after `exp` (§11.12.4 allows discarding after `exp`), on a write and at most once a
+  minute. The Python reference (draft-10) has no revocation records, so there is no parity counterpart.

@@ -1,5 +1,6 @@
 package io.github.marcofanti.aauth.personserver.persistence;
 
+import io.github.marcofanti.aauth.personserver.ps.ExpiredRecords;
 import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.RevocationStore;
 import java.util.List;
@@ -13,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class SqlRevocationStore implements RevocationStore {
 
     private final JdbcTemplate jdbc;
+    private final ExpiredRecords expired = new ExpiredRecords();
 
     public SqlRevocationStore(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(dataSource);
@@ -41,6 +43,7 @@ public final class SqlRevocationStore implements RevocationStore {
                 MissionUtils.stripTrailingSlash(iss),
                 jti,
                 exp);
+        purgeIfDue();
     }
 
     @Override
@@ -64,6 +67,7 @@ public final class SqlRevocationStore implements RevocationStore {
                 jti,
                 sub,
                 exp);
+        purgeIfDue();
     }
 
     @Override
@@ -94,5 +98,18 @@ public final class SqlRevocationStore implements RevocationStore {
         List<Long> rows =
                 jdbc.queryForList("SELECT revoked_at FROM ps_agent_revocation WHERE sub = ?", Long.class, agentSub);
         return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    @Override
+    public void purgeExpired(long cutoffEpochSeconds) {
+        jdbc.update("DELETE FROM ps_revocation WHERE exp <= ?", cutoffEpochSeconds);
+        jdbc.update("DELETE FROM ps_agent_token WHERE exp <= ?", cutoffEpochSeconds);
+    }
+
+    private void purgeIfDue() {
+        long cutoff = expired.cutoffIfDue();
+        if (cutoff >= 0) {
+            purgeExpired(cutoff);
+        }
     }
 }

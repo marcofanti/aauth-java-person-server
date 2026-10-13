@@ -28,4 +28,7 @@ public interface RevocationStore {
 
     /** When an agent token of {@code agentSub} was last revoked, or {@code null} if never. */
     Long agentRevokedAt(String agentSub);
+
+    /** Drop revocations and agent-token records with {@code exp <= cutoffEpochSeconds}. */
+    void purgeExpired(long cutoffEpochSeconds);
 }

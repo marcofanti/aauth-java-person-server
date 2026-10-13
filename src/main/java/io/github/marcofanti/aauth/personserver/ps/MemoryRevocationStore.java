@@ -7,9 +7,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class MemoryRevocationStore implements RevocationStore {
 
     private final Map<String, Long> revoked = new ConcurrentHashMap<>();
-    private final Map<String, String> agentSubs = new ConcurrentHashMap<>();
+    private final Map<String, AgentToken> agentTokens = new ConcurrentHashMap<>();
     private final Map<String, Long> agentRevocations = new ConcurrentHashMap<>();
     private final java.util.Set<String> resourceIssuers = ConcurrentHashMap.newKeySet();
+    private final ExpiredRecords expired = new ExpiredRecords();
+
+    private record AgentToken(String sub, long exp) {}
 
     @Override
     public void recordResourceIssuer(String iss) {
@@ -28,6 +31,7 @@ public final class MemoryRevocationStore implements RevocationStore {
     @Override
     public void revoke(String iss, String jti, long exp) {
         revoked.putIfAbsent(key(iss, jti), exp);
+        purgeIfDue();
     }
 
     @Override
@@ -37,12 +41,14 @@ public final class MemoryRevocationStore implements RevocationStore {
 
     @Override
     public void recordAgentToken(String iss, String jti, String sub, long exp) {
-        agentSubs.putIfAbsent(key(iss, jti), sub);
+        agentTokens.putIfAbsent(key(iss, jti), new AgentToken(sub, exp));
+        purgeIfDue();
     }
 
     @Override
     public String agentSub(String iss, String jti) {
-        return agentSubs.get(key(iss, jti));
+        AgentToken token = agentTokens.get(key(iss, jti));
+        return token == null ? null : token.sub();
     }
 
     @Override
@@ -53,5 +59,18 @@ public final class MemoryRevocationStore implements RevocationStore {
     @Override
     public Long agentRevokedAt(String agentSub) {
         return agentRevocations.get(agentSub);
+    }
+
+    @Override
+    public void purgeExpired(long cutoffEpochSeconds) {
+        revoked.values().removeIf(exp -> exp <= cutoffEpochSeconds);
+        agentTokens.values().removeIf(token -> token.exp() <= cutoffEpochSeconds);
+    }
+
+    private void purgeIfDue() {
+        long cutoff = expired.cutoffIfDue();
+        if (cutoff >= 0) {
+            purgeExpired(cutoff);
+        }
     }
 }

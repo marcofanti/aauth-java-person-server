@@ -45,4 +45,7 @@ public interface PersonTokenLedger {
      * tokens for, so refreshing an already-held resource never counts against the limit.
      */
     int distinctLiveResources(String agentId, String exclude, long nowEpochSeconds);
+
+    /** Drop issued person tokens with {@code exp <= cutoffEpochSeconds}, with their presentation and upstream records. */
+    void purgeExpired(long cutoffEpochSeconds);
 }
