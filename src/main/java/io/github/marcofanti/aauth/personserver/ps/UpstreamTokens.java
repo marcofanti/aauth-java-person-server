@@ -107,6 +107,16 @@ public final class UpstreamTokens {
         }
     }
 
+    /**
+     * Keys of {@code asIssuer} for an auth token it issued, when this PS presented a person token
+     * to that AS for the token's {@code aud} and {@code sub}; {@code null} for any other AS.
+     */
+    Map<String, Object> federatedAccessServerJwks(Jwts.Decoded token, String asIssuer) {
+        return federatedAccessServers(token).contains(MissionUtils.stripTrailingSlash(asIssuer))
+                ? accessServerJwks.apply(asIssuer)
+                : null;
+    }
+
     /** ASes this PS presented a person token to for the upstream token's {@code aud} and {@code sub}. */
     private Set<String> federatedAccessServers(Jwts.Decoded decoded) {
         String aud = decoded.claim("aud");

@@ -105,4 +105,23 @@ class HttpAsFederatorTest {
 
         assertThat(error.error()).isEqualTo(ProblemError.AS_UNREACHABLE);
     }
+
+    @Test
+    void paymentRequiredIsAsUnreachableEvenWithAnErrorBody() {
+        as.answer(request -> new Answer(
+                402,
+                Map.of(
+                        "Location", "/pending/pay",
+                        "WWW-Authenticate", "Payment id=\"x\", method=\"stripe\"",
+                        "Content-Type", "application/json"),
+                Json.write(Map.of("error", "payment_required"))));
+
+        ProblemError error = catchThrowableOfType(
+                ProblemError.class,
+                () -> federator.federateDraft11(request(), Map.of("aud", as.origin(), "iss", "https://rs.example")));
+
+        assertThat(error.status()).isEqualTo(502);
+        assertThat(error.error()).isEqualTo(ProblemError.AS_UNREACHABLE);
+        assertThat(error.getMessage()).contains("payment");
+    }
 }
