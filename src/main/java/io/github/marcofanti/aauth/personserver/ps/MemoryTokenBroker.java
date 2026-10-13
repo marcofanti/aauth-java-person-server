@@ -135,12 +135,6 @@ public final class MemoryTokenBroker implements TokenBroker {
         Map<String, Object> resourceClaims = null;
         if (request.secureMode()) {
             resourceClaims = verifyResourceToken(request.resourceToken(), request.agentId(), request.agentJkt());
-            if (ResourceTokenVerifier.isDraft11(resourceClaims)) {
-                throw new ProblemError(
-                        400,
-                        "invalid_resource_token",
-                        "draft-11 resource tokens are redeemed at auth_token_endpoint with presented_token");
-            }
         }
         return decide(request, resourceClaims);
     }

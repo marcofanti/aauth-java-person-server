@@ -96,7 +96,7 @@ public class PsRevocationController {
         String id = key.params().get("id");
         String dwk = key.params().get("dwk");
         try {
-            Identifiers.validateServerUrl(id);
+            Identifiers.validateServerIdentifier(id);
         } catch (IllegalArgumentException e) {
             throw new SignatureError("invalid_key", "Signature-Key id is not a server identifier: " + e.getMessage());
         }

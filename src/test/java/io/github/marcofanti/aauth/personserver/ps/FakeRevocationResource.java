@@ -42,10 +42,15 @@ public final class FakeRevocationResource implements AutoCloseable {
         server.createContext("/.well-known/" + metadataDocument, this::metadata);
         server.createContext("/revoke", this::revoke);
         server.start();
+        HostRoutes.register(origin(), "http://127.0.0.1:" + server.getAddress().getPort());
     }
 
+    /**
+     * The fake's draft-11 identifier: a port-less HTTPS origin, routed to its local socket via
+     * {@link HostRoutes}.
+     */
     public String origin() {
-        return "http://127.0.0.1:" + server.getAddress().getPort();
+        return "https://rs" + server.getAddress().getPort() + ".example";
     }
 
     public List<Received> received() {

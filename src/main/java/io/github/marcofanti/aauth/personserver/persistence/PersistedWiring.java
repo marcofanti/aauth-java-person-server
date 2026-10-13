@@ -59,7 +59,7 @@ public final class PersistedWiring {
                 new MemoryMissionLifecycle(mission, store, origin, options.autoApproveMission());
         RevocationStore revocations = new SqlRevocationStore(dataSource);
         UpstreamTokens upstreamTokens =
-                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations);
+                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations, agentResolver);
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,

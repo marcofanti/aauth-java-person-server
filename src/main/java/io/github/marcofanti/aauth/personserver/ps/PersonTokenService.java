@@ -8,11 +8,9 @@ import io.github.marcofanti.aauth.personserver.model.PendingStoreValue;
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.web.PsAuth.TokenAgentContext;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
-import io.github.marcofanti.aauth.tokens.AgentTokens;
+import io.github.marcofanti.aauth.tokens.Delegation;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,7 +132,7 @@ public final class PersonTokenService {
             throw new ProblemError(
                     400, "invalid_request", "upstream_token is sent without mission_s256 or subagent_token");
         }
-        return deps.upstreamTokens().verify(params.upstreamToken(), agent.agentIss());
+        return deps.upstreamTokens().verify(params.upstreamToken(), agent.agentToken());
     }
 
     private static String validResource(String resource) {
@@ -142,7 +140,7 @@ public final class PersonTokenService {
             throw new ProblemError(400, "invalid_request", "resource is required");
         }
         try {
-            return MissionUtils.stripTrailingSlash(Identifiers.validateServerUrl(resource));
+            return Identifiers.validateServerIdentifier(MissionUtils.stripTrailingSlash(resource));
         } catch (IllegalArgumentException e) {
             throw new ProblemError(400, "invalid_request", "invalid resource: " + e.getMessage());
         }
@@ -163,29 +161,28 @@ public final class PersonTokenService {
         if (subagentToken == null) {
             return new Holder(agent.agentId(), agent.agentCnfJwk(), agent.agentTokenExp());
         }
+        if (agent.agentToken() == null) {
+            throw new ProblemError(
+                    400, ProblemError.INVALID_SUBAGENT_TOKEN, "subagent_token requires a jwt-signed parent request");
+        }
+        // §10.2.1 by the library: single-level parent, shared issuer, the sub-agent's own key.
         Map<String, Object> claims;
         try {
-            claims = AgentTokens.verify(subagentToken, deps.agentJwks(), null);
+            claims =
+                    Delegation.verifySubagentToken(agent.agentToken(), subagentToken, (id, dwk, kid) -> deps.agentJwks()
+                            .apply(id));
         } catch (TokenException e) {
-            String message = String.valueOf(e.getMessage());
-            String code = message.toLowerCase(Locale.ROOT).contains("expired")
+            String code = String.valueOf(e.errorCode());
+            String problem = code.contains("expired")
                     ? ProblemError.EXPIRED_SUBAGENT_TOKEN
                     : ProblemError.INVALID_SUBAGENT_TOKEN;
-            throw new ProblemError(400, code, message);
+            throw new ProblemError(400, problem, String.valueOf(e.getMessage()));
         }
         String subIss = String.valueOf(claims.get("iss"));
         String subJti = claims.get("jti") instanceof String jti ? jti : null;
         if (deps.revocations().isRevoked(subIss, subJti)) {
             throw new ProblemError(
                     400, ProblemError.REVOKED_SUBAGENT_TOKEN, "the agent provider has revoked this subagent_token");
-        }
-        if (!Objects.equals(claims.get("parent_agent"), agent.agentId())) {
-            throw new ProblemError(
-                    400, ProblemError.INVALID_SUBAGENT_TOKEN, "subagent_token's parent_agent is not the signing agent");
-        }
-        if (!Objects.equals(claims.get("iss"), agent.agentIss())) {
-            throw new ProblemError(
-                    400, ProblemError.INVALID_SUBAGENT_TOKEN, "subagent_token's iss differs from the signing agent's");
         }
         Object cnf = claims.get("cnf");
         if (!(cnf instanceof Map<?, ?> cnfMap) || !(cnfMap.get("jwk") instanceof Map<?, ?> jwk)) {

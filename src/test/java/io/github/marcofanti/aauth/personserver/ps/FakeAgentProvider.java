@@ -38,10 +38,15 @@ public final class FakeAgentProvider implements AutoCloseable {
                 "/jwks",
                 exchange -> respond(exchange, Map.of("keys", List.of(Jwk.publicKeyToJwk(key.getPublic(), KID)))));
         server.start();
+        HostRoutes.register(origin(), "http://127.0.0.1:" + server.getAddress().getPort());
     }
 
+    /**
+     * The fake's draft-11 identifier: a port-less HTTPS origin, routed to its local socket via
+     * {@link HostRoutes}.
+     */
     public String origin() {
-        return "http://127.0.0.1:" + server.getAddress().getPort();
+        return "https://ap" + server.getAddress().getPort() + ".example";
     }
 
     /** An agent token for {@code sub}, binding {@code agentKey}, valid for an hour. */

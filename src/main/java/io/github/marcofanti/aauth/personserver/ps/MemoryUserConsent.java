@@ -64,6 +64,10 @@ public final class MemoryUserConsent implements UserConsent {
         if (!tokenRequest.secureMode()) {
             return null;
         }
+        // Draft-11 claims were verified with the presented token when the request was deferred.
+        if (tokenRequest.draft11() != null) {
+            return record.verifiedResourceClaims;
+        }
         if (resourceJwks != null) {
             try {
                 return ResourceTokenVerifier.verify(

@@ -6,8 +6,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
+import io.github.marcofanti.aauth.personserver.ps.AgentTokenForge;
+import io.github.marcofanti.aauth.personserver.ps.HostRoutes;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
+import io.github.marcofanti.aauth.personserver.ps.ResourceTokenForge;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.RequestSigner;
@@ -17,7 +20,7 @@ import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
+import io.github.marcofanti.aauth.tokens.TokenVerifier;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -38,7 +41,9 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class PsAuthTokenDraft11HttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -104,6 +109,11 @@ class PsAuthTokenDraft11HttpTest {
     }
 
     private static String agentToken(long exp) {
+        if (exp <= Instant.now().getEpochSecond()) {
+            // The library will not mint an expired agent token.
+            return AgentTokenForge.sign(
+                    PS_ORIGIN, AGENT_ID, jwk(AGENT_KEY, "eph"), AS_KEY.getPrivate(), "as-kid", exp, null);
+        }
         return AgentTokens.create(
                 AgentTokens.Spec.builder(PS_ORIGIN, AGENT_ID, jwk(AGENT_KEY, "eph"), AS_KEY.getPrivate(), "as-kid")
                         .exp(exp)
@@ -127,22 +137,15 @@ class PsAuthTokenDraft11HttpTest {
     /** A resource token derived from {@code presented} (what a draft-11 resource issues). */
     private static String resourceToken(
             String presented, String scope, String aud, String subOverride, String jtiOverride) {
-        Map<String, Object> claims = Jwts.parse(presented).payload();
-        return ResourceTokens.create(new ResourceTokens.Spec(
-                RESOURCE_ISS,
-                aud,
-                agentJkt(),
-                scope,
-                PS_ORIGIN,
-                subOverride != null ? subOverride : String.valueOf(claims.get("sub")),
-                jtiOverride != null ? jtiOverride : String.valueOf(claims.get("jti")),
-                RS_KEY.getPrivate(),
-                "rs-kid",
-                inOneHour(),
-                (String) claims.get("mission_s256"),
-                (String) claims.get("tenant"),
-                null,
-                null));
+        Map<String, Object> overrides = new LinkedHashMap<>();
+        if (subOverride != null) {
+            overrides.put("sub", subOverride);
+        }
+        if (jtiOverride != null) {
+            overrides.put("presented_jti", jtiOverride);
+        }
+        return ResourceTokenForge.derivedFrom(
+                presented, RESOURCE_ISS, aud, agentJkt(), scope, RS_KEY.getPrivate(), "rs-kid", overrides);
     }
 
     private static String resourceToken(String presented) {
@@ -157,14 +160,14 @@ class PsAuthTokenDraft11HttpTest {
             throws Exception {
         byte[] body = Json.write(params).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken))
                 .additionalComponents(BODY_COMPONENTS)
                 .created(created)
                 .build());
-        var request = post(path).contentType(JSON_UTF8).content(body);
+        var request = post(REQUEST_BASE + path).contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -191,8 +194,8 @@ class PsAuthTokenDraft11HttpTest {
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
 
         String authToken = (String) json(result).get("auth_token");
-        Map<String, Object> claims = AuthTokens.verifyToken(
-                authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
+        Map<String, Object> claims = TokenVerifier.verify(
+                authToken, (id, dwk, kid) -> ps.psSigning().getJwks(), TokenVerifier.Options.forType(AuthTokens.TYPE));
         assertThat(claims)
                 .containsEntry("iss", PS_ORIGIN)
                 .containsEntry("ps", PS_ORIGIN)
@@ -264,8 +267,10 @@ class PsAuthTokenDraft11HttpTest {
     @Test
     void resourceTokenForAnUnreachableAccessServerIsAsUnreachable() throws Exception {
         String person = personToken(AGENT_KEY, RESOURCE_ISS);
+        HostRoutes.register("https://unreachable-as.example", "http://127.0.0.1:1");
         assertProblem(
-                postAuthToken(resourceToken(person, "demo.scope", "http://127.0.0.1:1", null, null), person),
+                postAuthToken(
+                        resourceToken(person, "demo.scope", "https://unreachable-as.example", null, null), person),
                 502,
                 ProblemError.AS_UNREACHABLE);
     }

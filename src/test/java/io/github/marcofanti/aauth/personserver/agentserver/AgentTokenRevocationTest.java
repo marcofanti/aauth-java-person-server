@@ -75,16 +75,30 @@ class AgentTokenRevocationTest {
     void tokensWithoutAPsAreNotRecorded() {
         AsSigningService noPs = new AsSigningService(ISSUER, null, null, 3600, null);
         revocation.record(noPs.createAgentToken(
-                "aauth:a@agents.example", Map.of("kty", "OKP", "crv", "Ed25519", "x", "AAAA"), null));
+                "aauth:a@agents.example",
+                Jwk.publicKeyToJwk(KeyPairs.generateEd25519().getPublic(), "eph"),
+                null));
         assertThat(revocation.revokeAll("aauth:a@agents.example")).isEmpty();
     }
 
     @Test
     void expiredTokensAreDropped() {
-        String token = signing.createAgentToken(
-                "aauth:a@agents.example",
-                Jwk.publicKeyToJwk(KeyPairs.generateEd25519().getPublic(), "eph"),
-                -1);
+        // The library will not mint an expired token; record() only reads the claims it needs.
+        String token = Jwts.encode(
+                Map.of(
+                        "iss",
+                        ISSUER,
+                        "sub",
+                        "aauth:a@agents.example",
+                        "jti",
+                        "expired-1",
+                        "ps",
+                        ps.origin(),
+                        "exp",
+                        java.time.Instant.now().getEpochSecond() - 1),
+                signing.keyPair().getPrivate(),
+                signing.kid(),
+                "aa-agent+jwt");
         revocation.record(token);
         assertThat(revocation.revokeAll("aauth:a@agents.example")).isEmpty();
     }

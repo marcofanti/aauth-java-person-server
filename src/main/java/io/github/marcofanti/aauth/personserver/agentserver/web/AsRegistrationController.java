@@ -7,6 +7,8 @@ import io.github.marcofanti.aauth.personserver.model.VerifiedRequest;
 import io.github.marcofanti.aauth.personserver.web.BodyReader;
 import io.github.marcofanti.aauth.personserver.web.BodyValidationException;
 import io.github.marcofanti.aauth.personserver.web.RequestExtract;
+import io.github.marcofanti.aauth.signing.JoseException;
+import io.github.marcofanti.aauth.signing.keys.Jwk;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,6 +47,7 @@ public class AsRegistrationController {
         if (stablePub == null) {
             throw new BodyValidationException("field 'stable_pub' required");
         }
+        requireUsableKey(stablePub, "stable_pub");
         String agentName = body.optString("agent_name");
         agentName = agentName == null ? "" : agentName.strip();
         if (agentName.isEmpty()) {
@@ -57,12 +60,25 @@ public class AsRegistrationController {
         return stablePub;
     }
 
+    /**
+     * Agent tokens bind keys with a fully-specified {@code alg} (Ed25519, ES256, ES384); refuse any
+     * other key at registration rather than failing when the token is minted.
+     */
+    static void requireUsableKey(Map<String, Object> jwk, String name) {
+        try {
+            Jwk.validateAlgorithm(jwk, null);
+        } catch (JoseException e) {
+            throw new BodyValidationException(name + " is not a usable key: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> postRegister(
             HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         VerifiedRequest verified = auth.requireHttpSig(RequestExtract.signedRequest(request, raw));
         StringBuilder agentName = new StringBuilder();
         Map<String, Object> stablePub = parseRegisterBody(raw, agentName);
+        requireUsableKey(verified.ephemeralPub(), "the Signature-Key public key");
         RegistrationOps.RegisterResult result =
                 RegistrationOps.handleRegister(verified, stablePub, agentName.toString(), container);
         return switch (result) {

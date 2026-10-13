@@ -62,10 +62,15 @@ public final class FakeAccessServer implements AutoCloseable {
                         exchange, Answer.json(200, Map.of("keys", List.of(Jwk.publicKeyToJwk(key.getPublic(), KID))))));
         server.createContext("/", this::handle);
         server.start();
+        HostRoutes.register(origin(), "http://127.0.0.1:" + server.getAddress().getPort());
     }
 
+    /**
+     * The fake's draft-11 identifier: a port-less HTTPS origin, routed to its local socket via
+     * {@link HostRoutes}.
+     */
     public String origin() {
-        return "http://127.0.0.1:" + server.getAddress().getPort();
+        return "https://as" + server.getAddress().getPort() + ".example";
     }
 
     public KeyPair key() {
@@ -127,6 +132,7 @@ public final class FakeAccessServer implements AutoCloseable {
                 .signingKey(key.getPrivate(), KID)
                 .scope((String) claims.get("scope"))
                 .exp(((Number) claims.get("exp")).longValue())
+                .bounds(((Number) claims.get("exp")).longValue(), ((Number) claims.get("exp")).longValue())
                 .dwk("aauth-access.json")
                 .build());
     }

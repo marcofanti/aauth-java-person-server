@@ -69,19 +69,24 @@ public final class PersonTokenIssuer {
                     "cannot issue a person token: the agent token or mission has already expired");
         }
         String sub = subjects.subFor(person, request.resource());
-        String token = PersonTokens.create(new PersonTokens.Spec(
-                iss,
-                sub,
-                MissionUtils.stripTrailingSlash(request.resource()),
-                request.cnfJwk(),
-                signing.keyPair().getPrivate(),
-                signing.kid(),
-                exp,
-                request.missionS256(),
-                request.tenant(),
-                null,
-                null,
-                null));
+        // exp already folds in the agent token, mission and upstream bounds (maxExp), so it is
+        // also the bound the library asks for each of them.
+        PersonTokens.Spec.Builder spec = PersonTokens.Spec.builder(
+                        iss,
+                        MissionUtils.stripTrailingSlash(request.resource()),
+                        sub,
+                        request.cnfJwk(),
+                        signing.keyPair().getPrivate(),
+                        signing.kid())
+                .agentExp(exp)
+                .exp(exp);
+        if (request.missionS256() != null) {
+            spec.mission(request.missionS256(), exp);
+        }
+        if (request.tenant() != null) {
+            spec.tenant(request.tenant());
+        }
+        String token = PersonTokens.create(spec.build());
         String jti = Jwts.parse(token).claim("jti");
         ledger.recordIssued(new PersonTokenLedger.Issued(
                 jti, request.agentId(), person, MissionUtils.stripTrailingSlash(request.resource()), sub, exp));

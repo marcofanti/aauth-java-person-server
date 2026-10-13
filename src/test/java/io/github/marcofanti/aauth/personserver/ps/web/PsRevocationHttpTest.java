@@ -38,7 +38,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class PsRevocationHttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -128,7 +130,7 @@ class PsRevocationHttpTest {
             String path, byte[] body, KeyPair key, SignatureScheme scheme, List<String> components, Long created)
             throws Exception {
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(key)
                 .scheme(scheme)
@@ -136,7 +138,7 @@ class PsRevocationHttpTest {
                 .created(created)
                 .build());
         MockHttpServletRequestBuilder request =
-                post(path).contentType(JSON_UTF8).content(body);
+                post(REQUEST_BASE + path).contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -185,7 +187,8 @@ class PsRevocationHttpTest {
 
     @Test
     void metadataAdvertisesTheRevocationEndpoint() throws Exception {
-        MvcResult result = mvc.perform(get("/.well-known/aauth-person.json")).andReturn();
+        MvcResult result = mvc.perform(get(REQUEST_BASE + "/.well-known/aauth-person.json"))
+                .andReturn();
         assertThat(json(result)).containsEntry("revocation_endpoint", PS_ORIGIN + "/revoke");
     }
 
@@ -219,7 +222,8 @@ class PsRevocationHttpTest {
 
     @Test
     void unsignedRequestIsInvalidSignature() throws Exception {
-        MvcResult result = mvc.perform(post("/revoke").contentType(JSON_UTF8).content(revocation("rt-1")))
+        MvcResult result = mvc.perform(
+                        post(REQUEST_BASE + "/revoke").contentType(JSON_UTF8).content(revocation("rt-1")))
                 .andReturn();
         assertSignatureError(result, "invalid_signature");
     }
@@ -317,7 +321,7 @@ class PsRevocationHttpTest {
                 "/revoke",
                 revocation("rt-1"),
                 RS_KEY,
-                new SignatureScheme.JwksUri("http://169.254.169.254", "aauth-resource.json", "rs-kid"),
+                new SignatureScheme.JwksUri("https://internal.example", "aauth-resource.json", "rs-kid"),
                 BODY_COMPONENTS);
         assertProblem(result, 403, "unsupported_iss");
     }

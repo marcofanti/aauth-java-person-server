@@ -2,13 +2,14 @@ package io.github.marcofanti.aauth.personserver.ps;
 
 import io.github.marcofanti.aauth.TokenException;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
+import io.github.marcofanti.aauth.signing.JwksFetcher;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
-import io.github.marcofanti.aauth.tokens.AuthTokens;
-import io.github.marcofanti.aauth.tokens.PersonTokens;
-import java.util.Locale;
+import io.github.marcofanti.aauth.tokens.Delegation;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -21,7 +22,6 @@ import java.util.function.Supplier;
 public final class UpstreamTokens {
 
     private static final String PERSON_TYPE = "aa-person+jwt";
-    private static final String AUTH_TYPE = "aa-auth+jwt";
 
     /** A verified upstream token: whom it stands for and what bounds a token issued on it. */
     public record Upstream(String iss, String jti, String person, String callingAgent, String missionS256, long exp) {}
@@ -32,43 +32,41 @@ public final class UpstreamTokens {
     private final String psOrigin;
     private final Supplier<Map<String, Object>> ownJwks;
     private final Function<String, Map<String, Object>> accessServerJwks;
+    private final Function<String, Map<String, Object>> agentJwks;
     private final Records records;
 
     public UpstreamTokens(
             String psOrigin,
             Supplier<Map<String, Object>> ownJwks,
             Function<String, Map<String, Object>> accessServerJwks,
+            Function<String, Map<String, Object>> agentJwks,
             Records records) {
         this.psOrigin = MissionUtils.stripTrailingSlash(psOrigin);
         this.ownJwks = ownJwks;
         this.accessServerJwks = accessServerJwks;
+        this.agentJwks = agentJwks;
         this.records = records;
     }
 
     /**
-     * Verify {@code token} for the intermediary whose agent token was issued by {@code intermediaryIss}.
+     * Verify {@code token} for the intermediary that signed the request with
+     * {@code intermediaryAgentToken}.
      *
      * @throws ProblemError {@code invalid_upstream_token}, {@code expired_upstream_token}, or
      *     {@code revoked_upstream_token}
      */
-    public Upstream verify(String token, String intermediaryIss) {
-        if (intermediaryIss == null) {
-            throw invalid("the intermediary's agent token has no iss");
-        }
+    public Upstream verify(String token, String intermediaryAgentToken) {
         Jwts.Decoded decoded;
         try {
             decoded = Jwts.parse(token);
         } catch (RuntimeException e) {
             throw invalid("upstream_token is not a JWT");
         }
-        Object typ = decoded.header().get("typ");
-        if (!PERSON_TYPE.equals(typ) && !AUTH_TYPE.equals(typ)) {
-            throw invalid("upstream_token typ must be aa-person+jwt or aa-auth+jwt");
-        }
-        Map<String, Object> claims = verifySignedClaims(token, decoded, typ, intermediaryIss);
+        Map<String, Object> claims = verifySignedClaims(token, decoded, intermediaryAgentToken);
         String iss = String.valueOf(claims.get("iss"));
         String jti = String.valueOf(claims.get("jti"));
-        PersonTokenLedger.Issued origin = PERSON_TYPE.equals(typ) ? personOrigin(jti) : authOrigin(claims);
+        PersonTokenLedger.Issued origin =
+                PERSON_TYPE.equals(decoded.header().get("typ")) ? personOrigin(jti) : authOrigin(claims);
         Long revokedAt = records.revocations().agentRevokedAt(origin.agentId());
         long iat = claims.get("iat") instanceof Number n ? n.longValue() : Long.MIN_VALUE;
         if (revokedAt != null && iat <= revokedAt) {
@@ -84,60 +82,46 @@ public final class UpstreamTokens {
                 ((Number) claims.get("exp")).longValue());
     }
 
-    private Map<String, Object> verifySignedClaims(
-            String token, Jwts.Decoded decoded, Object typ, String intermediaryIss) {
-        Map<String, Object> claims;
+    /**
+     * §9.4.5 steps 1–3 by the library: {@code typ}, signature, {@code aud} = the intermediary's
+     * agent-token {@code iss}, {@code ps} = this PS, and an auth token's {@code iss} this PS or an
+     * AS this PS presented a person token to for that {@code aud} and {@code sub}.
+     */
+    private Map<String, Object> verifySignedClaims(String token, Jwts.Decoded decoded, String intermediaryAgentToken) {
+        Set<String> federated = federatedAccessServers(decoded);
+        JwksFetcher keys = (id, dwk, kid) -> switch (dwk == null ? "" : dwk) {
+            case "aauth-person.json" -> isSelf(id) ? ownJwks.get() : null;
+            case "aauth-access.json" ->
+                federated.contains(MissionUtils.stripTrailingSlash(id)) ? accessServerJwks.apply(id) : null;
+            case "aauth-agent.json" -> agentJwks.apply(id);
+            default -> null;
+        };
         try {
-            claims = PERSON_TYPE.equals(typ)
-                    ? PersonTokens.verify(token, iss -> isSelf(iss) ? ownJwks.get() : null, intermediaryIss)
-                    : AuthTokens.verifyToken(
-                            token,
-                            iss -> authIssuerJwks(iss, decoded),
-                            new AuthTokens.VerifyOptions(AUTH_TYPE, null, intermediaryIss, null));
+            return Delegation.verifyUpstreamToken(
+                    token,
+                    keys,
+                    new Delegation.UpstreamOptions(
+                            intermediaryAgentToken, psOrigin, federated, "ps", records.revocations()::isRevoked));
         } catch (TokenException e) {
-            requireNotRevoked(decoded);
-            String message = String.valueOf(e.getMessage());
-            boolean expired = message.toLowerCase(Locale.ROOT).contains("expired");
-            throw new ProblemError(
-                    400,
-                    expired ? ProblemError.EXPIRED_UPSTREAM_TOKEN : ProblemError.INVALID_UPSTREAM_TOKEN,
-                    "upstream_token: " + message);
+            throw Draft11Checks.problem(e, ProblemError.INVALID_UPSTREAM_TOKEN);
         }
-        requireNotRevoked(decoded);
-        if (AUTH_TYPE.equals(typ) && !isSelf(String.valueOf(claims.get("ps")))) {
-            throw invalid("the upstream auth token's ps is not this PS");
-        }
-        return claims;
     }
 
-    /** §9.4.5 step 2: an auth token's iss is this PS, or an AS this PS presented a person token to. */
-    private Map<String, Object> authIssuerJwks(String iss, Jwts.Decoded decoded) {
-        if (isSelf(iss)) {
-            return ownJwks.get();
-        }
+    /** ASes this PS presented a person token to for the upstream token's {@code aud} and {@code sub}. */
+    private Set<String> federatedAccessServers(Jwts.Decoded decoded) {
         String aud = decoded.claim("aud");
         String sub = decoded.claim("sub");
         if (aud == null || sub == null) {
-            return null;
+            return Set.of();
         }
-        String issuer = MissionUtils.stripTrailingSlash(iss);
+        Set<String> out = new HashSet<>();
         for (PersonTokenLedger.Issued issued : records.personTokens().findBySubject(aud, sub)) {
             for (PersonTokenLedger.Presentation presentation :
                     records.personTokens().presentations(issued.jti())) {
-                if (presentation.asIssuer().equals(issuer)) {
-                    return accessServerJwks.apply(issuer);
-                }
+                out.add(presentation.asIssuer());
             }
         }
-        return null;
-    }
-
-    private void requireNotRevoked(Jwts.Decoded decoded) {
-        String iss = decoded.claim("iss");
-        String jti = decoded.claim("jti");
-        if (iss != null && jti != null && records.revocations().isRevoked(iss, jti)) {
-            throw new ProblemError(400, ProblemError.REVOKED_UPSTREAM_TOKEN, "the upstream token was revoked");
-        }
+        return out;
     }
 
     /** §9.4.5 step 4 for a person token: the agent this PS issued it to. */

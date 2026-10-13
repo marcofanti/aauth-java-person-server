@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.marcofanti.aauth.missions.Missions;
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
@@ -40,7 +41,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class PsMissionDraft11HttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -107,14 +110,14 @@ class PsMissionDraft11HttpTest {
     private MvcResult signedPost(String path, Map<String, Object> params, String sub, KeyPair key) throws Exception {
         byte[] body = Json.write(params).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(key)
                 .scheme(new SignatureScheme.Jwt(agentToken(sub, key)))
                 .additionalComponents(BODY_COMPONENTS)
                 .build());
         MockHttpServletRequestBuilder request =
-                post(path).contentType(JSON_UTF8).content(body);
+                post(REQUEST_BASE + path).contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -144,7 +147,7 @@ class PsMissionDraft11HttpTest {
 
     @Test
     void metadataAdvertisesTheDraft11MissionEndpoint() throws Exception {
-        mvc.perform(get("/.well-known/aauth-person.json"))
+        mvc.perform(get(REQUEST_BASE + "/.well-known/aauth-person.json"))
                 .andExpect(jsonPath("$.mission_endpoint").value(PS_ORIGIN + "/agent-missions"));
     }
 
@@ -161,6 +164,8 @@ class PsMissionDraft11HttpTest {
                 .containsKeys("approved_at", "expires_at")
                 .doesNotContainKeys("approver", "capabilities");
         assertThat(approval).containsKey("capabilities").doesNotContainKey("person_tokens");
+        // The agent side parses it with the library, as the demo's MissionClient does.
+        assertThat(Missions.parseApproval(approval).missionS256()).isEqualTo(approval.get("s256"));
     }
 
     @Test
@@ -207,7 +212,7 @@ class PsMissionDraft11HttpTest {
         assertThat(deferred.getResponse().getStatus()).isEqualTo(202);
         String pendingId = (String) json(deferred).get("pending_id");
 
-        mvc.perform(post("/consent/" + pendingId + "/decision")
+        mvc.perform(post(REQUEST_BASE + "/consent/" + pendingId + "/decision")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"approved\":true}"))
                 .andExpect(status().isOk());

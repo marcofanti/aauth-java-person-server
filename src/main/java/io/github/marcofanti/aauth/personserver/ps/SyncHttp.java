@@ -22,7 +22,7 @@ public final class SyncHttp {
 
     /** GET JSON from {@code url}. Allows http for localhost-style dev URLs. */
     public static Map<String, Object> fetchJson(String url) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+        HttpRequest request = HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
                 .header("Accept", "application/json")
                 .timeout(Duration.ofSeconds(15))
                 .GET()

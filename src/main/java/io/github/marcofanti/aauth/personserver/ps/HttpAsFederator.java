@@ -9,6 +9,7 @@ import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
+import io.github.marcofanti.aauth.tokens.TokenVerifier;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -29,7 +30,6 @@ import org.slf4j.LoggerFactory;
 public final class HttpAsFederator implements AsFederator {
 
     private static final Logger log = LoggerFactory.getLogger(HttpAsFederator.class);
-    private static final String AUTH_TYPE = "aa-auth+jwt";
     private static final String PERSON_TYPE = "aa-person+jwt";
     private static final Duration DEFAULT_DEADLINE = Duration.ofSeconds(20);
     private static final long MAX_POLL_WAIT_SECONDS = 5;
@@ -210,10 +210,12 @@ public final class HttpAsFederator implements AsFederator {
             String authToken, AccessServer as, TokenRequest request, Map<String, Object> resourceClaims) {
         Map<String, Object> claims;
         try {
-            claims = AuthTokens.verifyToken(
+            claims = TokenVerifier.verify(
                     authToken,
-                    iss -> as.issuer().equals(MissionUtils.stripTrailingSlash(iss)) ? as.jwks() : null,
-                    new AuthTokens.VerifyOptions(AUTH_TYPE, as.issuer(), (String) resourceClaims.get("iss"), null));
+                    (id, dwk, kid) -> as.issuer().equals(MissionUtils.stripTrailingSlash(id)) ? as.jwks() : null,
+                    TokenVerifier.Options.forType(AuthTokens.TYPE)
+                            .withIssuer(as.issuer())
+                            .withAudience((String) resourceClaims.get("iss")));
         } catch (TokenException e) {
             throw unreachable(as, "the AS auth token does not verify: " + e.getMessage());
         }

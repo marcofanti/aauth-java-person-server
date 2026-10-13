@@ -71,8 +71,9 @@ public final class HttpSigAuth {
             return false;
         }
         try {
-            String created = SignatureInputHeader.parse(signatureInput).params().get("created");
-            return created != null && Long.parseLong(created) > Instant.now().getEpochSecond() + CREATED_WINDOW_SECONDS;
+            Object created = SignatureInputHeader.parse(signatureInput).params().get("created");
+            return created != null
+                    && Long.parseLong(created.toString()) > Instant.now().getEpochSecond() + CREATED_WINDOW_SECONDS;
         } catch (HttpSignatureException | IllegalArgumentException e) {
             return false;
         }
@@ -106,7 +107,7 @@ public final class HttpSigAuth {
 
         Map<String, Object> claims;
         try {
-            claims = AgentTokens.verify(jwt, jwksFetcher, null);
+            claims = AgentTokens.verify(jwt, (id, dwk, kid) -> jwksFetcher.apply(id), null);
         } catch (TokenException e) {
             String message = e.getMessage() == null ? "invalid agent token" : e.getMessage();
             if (message.contains("expired")) {

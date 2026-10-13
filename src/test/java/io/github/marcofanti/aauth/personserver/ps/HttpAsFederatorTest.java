@@ -36,19 +36,15 @@ class HttpAsFederatorTest {
     }
 
     private TokenRequest request() {
-        String person = PersonTokens.create(new PersonTokens.Spec(
-                PS,
-                "sub",
-                "https://rs.example",
-                Jwk.publicKeyToJwk(KeyPairs.generateEd25519().getPublic(), "eph"),
-                signing.keyPair().getPrivate(),
-                signing.kid(),
-                Instant.now().getEpochSecond() + 600,
-                null,
-                null,
-                null,
-                null,
-                null));
+        String person = PersonTokens.create(PersonTokens.Spec.builder(
+                        PS,
+                        "https://rs.example",
+                        "sub",
+                        Jwk.publicKeyToJwk(KeyPairs.generateEd25519().getPublic(), "eph"),
+                        signing.keyPair().getPrivate(),
+                        signing.kid())
+                .agentExp(Instant.now().getEpochSecond() + 600)
+                .build());
         return TokenRequest.builder("aauth:agent@ap.example", "rt")
                 .draft11(new TokenRequest.Draft11(person, null, "agent-token"))
                 .build();

@@ -41,7 +41,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @ActiveProfiles("agent-server")
 class AgentServerHttpTest {
 
-    private static final String ORIGIN = "http://localhost";
+    private static final String ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = ORIGIN + ":443";
     private static final String PERSON_TOKEN = "person-secret";
 
     @TestConfiguration
@@ -78,13 +80,14 @@ class AgentServerHttpTest {
         Map<String, String> signedHeaders = RequestSigner.sign(SignRequest.builder(method, ORIGIN + path)
                 .headers(
                         body == null
-                                ? Map.of("Host", "localhost")
-                                : Map.of("Host", "localhost", "Content-Type", "application/json"))
+                                ? Map.of("Host", "ps.example")
+                                : Map.of("Host", "ps.example", "Content-Type", "application/json"))
                 .body(body)
                 .keyPair(ephemeralKey)
                 .scheme(new SignatureScheme.Hwk())
                 .build());
-        MockHttpServletRequestBuilder request = "GET".equals(method) ? get(path) : post(path);
+        MockHttpServletRequestBuilder request =
+                "GET".equals(method) ? get(REQUEST_BASE + path) : post(REQUEST_BASE + path);
         if (body != null) {
             request = request.contentType("application/json").content(body);
         }
@@ -123,12 +126,12 @@ class AgentServerHttpTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("pending"));
 
-        mvc.perform(get("/person/registrations").header("Authorization", "Bearer " + PERSON_TOKEN))
+        mvc.perform(get(REQUEST_BASE + "/person/registrations").header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(
                         jsonPath("$[?(@.id == '" + pendingId + "')].agent_name").value("Test Agent"));
 
-        MvcResult approval = mvc.perform(post("/person/registrations/" + pendingId + "/approve")
+        MvcResult approval = mvc.perform(post(REQUEST_BASE + "/person/registrations/" + pendingId + "/approve")
                         .header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.agent_id").exists())
@@ -155,7 +158,7 @@ class AgentServerHttpTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.agent_token").exists());
 
-        mvc.perform(get("/person/bindings").header("Authorization", "Bearer " + PERSON_TOKEN))
+        mvc.perform(get(REQUEST_BASE + "/person/bindings").header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.agent_id == '" + agentId + "')].agent_name")
                         .value("Renamed Agent"));
@@ -166,7 +169,7 @@ class AgentServerHttpTest {
         KeyPair stableKey = KeyPairs.generateEd25519();
         KeyPair ephemeralKey = KeyPairs.generateEd25519();
         String pendingId = register202(stableKey, ephemeralKey, "Refresh Agent");
-        mvc.perform(post("/person/registrations/" + pendingId + "/approve")
+        mvc.perform(post(REQUEST_BASE + "/person/registrations/" + pendingId + "/approve")
                         .header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk());
         MvcResult polled = mvc.perform(signedHwk("GET", "/pending/" + pendingId, null, ephemeralKey))
@@ -181,7 +184,7 @@ class AgentServerHttpTest {
         Map<String, Object> stableJwk = publicJwk(stableKey);
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("typ", "jkt-s256+jwt");
-        header.put("alg", "EdDSA");
+        header.put("alg", "Ed25519");
         header.put("jwk", stableJwk);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("iss", "urn:jkt:sha-256:" + Jwk.thumbprint(stableJwk));
@@ -192,13 +195,13 @@ class AgentServerHttpTest {
 
         byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
         Map<String, String> signedHeaders = RequestSigner.sign(SignRequest.builder("POST", ORIGIN + "/refresh")
-                .headers(Map.of("Host", "localhost", "Content-Type", "application/json"))
+                .headers(Map.of("Host", "ps.example", "Content-Type", "application/json"))
                 .body(body)
                 .keyPair(rotatedKey)
                 .scheme(new SignatureScheme.JktJwt(delegationJwt))
                 .build());
         MockHttpServletRequestBuilder request =
-                post("/refresh").contentType("application/json").content(body);
+                post(REQUEST_BASE + "/refresh").contentType("application/json").content(body);
         for (Map.Entry<String, String> entry : signedHeaders.entrySet()) {
             request = request.header(entry.getKey(), entry.getValue());
         }
@@ -219,7 +222,7 @@ class AgentServerHttpTest {
         KeyPair stableKey = KeyPairs.generateEd25519();
         KeyPair ephemeralKey = KeyPairs.generateEd25519();
         String pendingId = register202(stableKey, ephemeralKey, "Denied Agent");
-        mvc.perform(post("/person/registrations/" + pendingId + "/deny")
+        mvc.perform(post(REQUEST_BASE + "/person/registrations/" + pendingId + "/deny")
                         .header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk());
         mvc.perform(signedHwk("GET", "/pending/" + pendingId, null, ephemeralKey))
@@ -256,7 +259,7 @@ class AgentServerHttpTest {
 
     @Test
     void unsignedRegisterRejected() throws Exception {
-        mvc.perform(post("/register")
+        mvc.perform(post(REQUEST_BASE + "/register")
                         .contentType("application/json")
                         .content(registerBody(KeyPairs.generateEd25519(), "NoSig")))
                 .andExpect(status().isUnauthorized())
@@ -265,15 +268,15 @@ class AgentServerHttpTest {
 
     @Test
     void personRoutesRequireBearer() throws Exception {
-        mvc.perform(get("/person/registrations")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/person/bindings").header("Authorization", "Bearer wrong"))
+        mvc.perform(get(REQUEST_BASE + "/person/registrations")).andExpect(status().isUnauthorized());
+        mvc.perform(get(REQUEST_BASE + "/person/bindings").header("Authorization", "Bearer wrong"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void createBindingFromStablePubThenRegisterIsImmediate() throws Exception {
         KeyPair stableKey = KeyPairs.generateEd25519();
-        MvcResult created = mvc.perform(post("/person/bindings")
+        MvcResult created = mvc.perform(post(REQUEST_BASE + "/person/bindings")
                         .header("Authorization", "Bearer " + PERSON_TOKEN)
                         .contentType("application/json")
                         .content(registerBody(stableKey, "Pre-trusted Agent")))
@@ -284,7 +287,7 @@ class AgentServerHttpTest {
                 .get("agent_id");
 
         // Duplicate stable key → 409 conflict with the existing agent id.
-        mvc.perform(post("/person/bindings")
+        mvc.perform(post(REQUEST_BASE + "/person/bindings")
                         .header("Authorization", "Bearer " + PERSON_TOKEN)
                         .contentType("application/json")
                         .content(registerBody(stableKey, "Duplicate")))
@@ -297,7 +300,8 @@ class AgentServerHttpTest {
                 .andExpect(jsonPath("$.agent_token").exists());
 
         // Revoke, then register queues a new pending approval instead of immediate issuance.
-        mvc.perform(post("/person/bindings/" + agentId + "/revoke").header("Authorization", "Bearer " + PERSON_TOKEN))
+        mvc.perform(post(REQUEST_BASE + "/person/bindings/" + agentId + "/revoke")
+                        .header("Authorization", "Bearer " + PERSON_TOKEN))
                 .andExpect(status().isOk());
         mvc.perform(signedHwk(
                         "POST", "/register", registerBody(stableKey, "Pre-trusted Agent"), KeyPairs.generateEd25519()))
@@ -306,12 +310,12 @@ class AgentServerHttpTest {
 
     @Test
     void wellKnownAgentMetadataAndJwks() throws Exception {
-        mvc.perform(get("/.well-known/aauth-agent.json"))
+        mvc.perform(get(REQUEST_BASE + "/.well-known/aauth-agent.json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.issuer").value(ORIGIN))
                 .andExpect(jsonPath("$.registration_endpoint").value(ORIGIN + "/register"))
                 .andExpect(jsonPath("$.client_name").value("AAuth Agent Server"));
-        mvc.perform(get("/.well-known/jwks.json"))
+        mvc.perform(get(REQUEST_BASE + "/.well-known/jwks.json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys[0].kid").value(container.signing().kid()));
     }

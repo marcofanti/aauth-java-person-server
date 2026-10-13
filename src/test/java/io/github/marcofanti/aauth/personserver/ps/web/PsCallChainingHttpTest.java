@@ -12,6 +12,7 @@ import io.github.marcofanti.aauth.personserver.ps.FakeAgentProvider;
 import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
+import io.github.marcofanti.aauth.personserver.ps.ResourceTokenForge;
 import io.github.marcofanti.aauth.personserver.ps.TrustedAgentServer;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
@@ -23,7 +24,6 @@ import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
 import io.github.marcofanti.aauth.tokens.PersonTokens;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -51,7 +51,9 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class PsCallChainingHttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -171,13 +173,13 @@ class PsCallChainingHttpTest {
             throws Exception {
         byte[] body = Json.write(params).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + path)
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(key)
                 .scheme(new SignatureScheme.Jwt(agentToken))
                 .additionalComponents(BODY_COMPONENTS)
                 .build());
-        var request = post(path).contentType(JSON_UTF8).content(body);
+        var request = post(REQUEST_BASE + path).contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -188,22 +190,15 @@ class PsCallChainingHttpTest {
 
     /** What the downstream resource issues after seeing the intermediary's person token. */
     private static String downstreamResourceToken(String presented, String scope) {
-        Map<String, Object> claims = Jwts.parse(presented).payload();
-        return ResourceTokens.create(new ResourceTokens.Spec(
+        return ResourceTokenForge.derivedFrom(
+                presented,
                 DOWNSTREAM,
                 PS_ORIGIN,
                 Jwk.thumbprint(jwk(INTERMEDIARY_KEY)),
                 scope,
-                PS_ORIGIN,
-                String.valueOf(claims.get("sub")),
-                String.valueOf(claims.get("jti")),
                 RS_KEY.getPrivate(),
                 "rs-kid",
-                inOneHour(),
-                (String) claims.get("mission_s256"),
-                null,
-                null,
-                null));
+                Map.of());
     }
 
     private static Map<String, Object> json(MvcResult result) throws Exception {
@@ -300,20 +295,19 @@ class PsCallChainingHttpTest {
         assertProblem(downstreamPersonToken(agentToken), 400, ProblemError.INVALID_UPSTREAM_TOKEN);
     }
 
+    /** A person token this PS signed but never recorded; forged so it can also be expired. */
     private String signedPersonToken(long exp) {
-        return PersonTokens.create(new PersonTokens.Spec(
-                PS_ORIGIN,
-                "sub-x",
-                INTERMEDIARY.origin(),
-                jwk(CALLER_KEY),
-                ps.psSigning().keyPair().getPrivate(),
-                ps.psSigning().kid(),
-                exp,
-                null,
-                null,
-                null,
-                null,
-                null));
+        Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("iss", PS_ORIGIN);
+        claims.put("dwk", PersonTokens.DWK);
+        claims.put("jti", "unrecorded-" + exp);
+        claims.put("iat", Math.min(Instant.now().getEpochSecond(), exp - 60));
+        claims.put("exp", exp);
+        claims.put("aud", INTERMEDIARY.origin());
+        claims.put("sub", "sub-x");
+        claims.put("cnf", Map.of("jwk", jwk(CALLER_KEY)));
+        return Jwts.encode(
+                claims, ps.psSigning().keyPair().getPrivate(), ps.psSigning().kid(), PersonTokens.TYPE);
     }
 
     @Test
@@ -428,6 +422,9 @@ class PsCallChainingHttpTest {
                 .signingKey(ACCESS_SERVER.key().getPrivate(), FakeAccessServer.KID)
                 .scope("trips.book")
                 .exp(Jwts.parse(person).numericClaim("exp"))
+                .bounds(
+                        Jwts.parse(person).numericClaim("exp"),
+                        Jwts.parse(person).numericClaim("exp"))
                 .dwk("aauth-access.json")
                 .build());
     }
@@ -482,6 +479,9 @@ class PsCallChainingHttpTest {
                 .cnfJwk(jwk(CALLER_KEY))
                 .signingKey(ACCESS_SERVER.key().getPrivate(), FakeAccessServer.KID)
                 .exp(Jwts.parse(person).numericClaim("exp"))
+                .bounds(
+                        Jwts.parse(person).numericClaim("exp"),
+                        Jwts.parse(person).numericClaim("exp"))
                 .dwk("aauth-access.json")
                 .build());
 
@@ -549,6 +549,9 @@ class PsCallChainingHttpTest {
                 .cnfJwk(jwk(revokedKey))
                 .signingKey(ACCESS_SERVER.key().getPrivate(), FakeAccessServer.KID)
                 .exp(Jwts.parse(revokedPerson).numericClaim("exp"))
+                .bounds(
+                        Jwts.parse(revokedPerson).numericClaim("exp"),
+                        Jwts.parse(revokedPerson).numericClaim("exp"))
                 .dwk("aauth-access.json")
                 .build());
 

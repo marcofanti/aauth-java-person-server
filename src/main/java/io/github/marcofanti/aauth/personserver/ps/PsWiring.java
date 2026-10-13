@@ -187,7 +187,8 @@ public final class PsWiring {
             PsSigningService psSigning,
             PersonTokenLedger personTokens,
             IssuedTokenStore authTokens,
-            RevocationStore revocations) {
+            RevocationStore revocations,
+            Function<String, Map<String, Object>> agentJwks) {
         return new UpstreamTokens(
                 origin,
                 psSigning::getJwks,
@@ -198,6 +199,7 @@ public final class PsWiring {
                         return null;
                     }
                 },
+                agentJwks,
                 new UpstreamTokens.Records(personTokens, authTokens, revocations));
     }
 
@@ -224,7 +226,7 @@ public final class PsWiring {
                 new MemoryMissionLifecycle(backend, store, origin, options.autoApproveMission());
         RevocationStore revocations = new MemoryRevocationStore();
         UpstreamTokens upstreamTokens =
-                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations);
+                PsWiring.upstreamTokens(origin, psSigning, personTokenLedger, issuedStore, revocations, agentResolver);
         MemoryTokenBroker tokenBroker = new MemoryTokenBroker(
                 store,
                 federator,

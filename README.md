@@ -100,27 +100,32 @@ AUTO=1 demo/demo.sh       # unattended smoke test
 
 Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides.html`).
 
-## Interop with the Python repo (verified 2026-07-30; re-verified 2026-08-06 on draft-10 and 2026-10-12 on the dual-stack draft-11 branch)
+## Interop with the Python repo
 
-Draft-10 note: `ps-token-mode3.py` needs aauth-java-library ≥ 0.2.3 — earlier 0.2.x
-reject the script's legacy `alg: EdDSA` resource JWKS (fixed by
-[aauth-java-library#15](https://github.com/marcofanti/aauth-java-library/pull/15),
-first shipped in 0.2.3). This repo pins 0.2.3, so the full suite passes.
+**Status on the `draft11` branch (2026-10-13):** this branch builds on the strict draft-11
+library (`0.3.0`). That library accepts only fully-specified `Ed25519`/`ES256`/`ES384` keys and
+JWTs. The Python reference server's scripts use the Python `aauth` 0.3.0 library, which labels
+Ed25519 keys and JWTs `alg: EdDSA`, so its signed scripts are now refused:
+
+| Script | Result |
+| --- | --- |
+| `scripts/ps-demo.sh` (insecure-dev, unsigned) | passes |
+| `scripts/agent-server-signed-walkthrough.py` | registration signature refused (401) |
+| `scripts/hwk-ps-client.sh` | `/mission` signature refused (401) |
+| `scripts/ps-token-mode3.py` | registration key refused (400, `EdDSA`) |
+
+Draft-10 requests from clients with fully-specified keys still work, including `demo/demo.sh`.
+The signed scripts work again once the Python reference moves to `aauth` 0.5.x. On `main`
+(library 0.2.3), all four pass, as verified 2026-07-30 and again 2026-08-06.
 
 Run from a sibling clone of
 [aauth-person-server](https://github.com/christian-posta/aauth-person-server) at
 `../aauth-person-server`, with this server behind the local HTTPS front (see Run) and
-`export SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem"` (re-verified over HTTPS 2026-10-12):
+`export SSL_CERT_FILE="$(mkcert -CAROOT)/rootCA.pem"`:
 
-- `BASE_URL=https://ps.uma.lab ./scripts/ps-demo.sh` — insecure-dev PS flow ✓
+- `BASE_URL=https://ps.uma.lab ./scripts/ps-demo.sh`
 - `.venv/bin/python scripts/agent-server-signed-walkthrough.py --base https://ps.uma.lab
-  --person-token mytoken --pending-prefix /register/pending` — real-signature registration,
-  approval, agent token, jkt-jwt refresh ✓ (`AAUTH_AS_INSECURE_DEV=false`)
-- `.venv/bin/python scripts/ps-token-mode3.py --base https://ps.uma.lab` — mode-3 secure
-  `POST /token` returning a real `aa-auth+jwt` ✓ (`AAUTH_PS_INSECURE_DEV=false`,
-  `AAUTH_AS_INSECURE_DEV=true`; approve the registration via UI or API)
-- `./scripts/hwk-ps-client.sh --base-url https://ps.uma.lab --permission-action WebSearch
-  --audit` — HWK-signed `/mission`, `/permission`, `/audit` ✓; `POST /token` returns the
-  documented 401 (`scheme=jwt` required in secure mode), identical to the Python server
-- `./scripts/agent-server-walkthrough.sh` — stale upstream: it sends `label` instead of the
-  now-required `agent_name` and fails identically against the Python server
+  --person-token mytoken --pending-prefix /register/pending` (`AAUTH_AS_INSECURE_DEV=false`)
+- `.venv/bin/python scripts/ps-token-mode3.py --base https://ps.uma.lab`
+  (`AAUTH_PS_INSECURE_DEV=false`, `AAUTH_AS_INSECURE_DEV=true`)
+- `./scripts/hwk-ps-client.sh --base-url https://ps.uma.lab --permission-action WebSearch --audit`

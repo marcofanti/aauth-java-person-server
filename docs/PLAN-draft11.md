@@ -201,3 +201,23 @@ issuer's agent tokens from the self JWKS (`selfAgentIssuer`). All run scripts us
 Draft-10 agent-token error codes now live in `AgentTokenRejectException`, because the library
 dropped them (draft-11 has none). Tests still use `http://localhost`; they move to HTTPS
 identifiers in the rework onto the strict library, routing outbound HTTP to local fakes.
+
+Strict library (2026-10-13): the PS builds on the library's final draft-11 port (`8c7d6a2`,
+PR aauth-java-library#26), which follows the Python 0.5.0 reference and is fully strict.
+- **Verification moved to the library:**
+  - `ResourceTokens.verify` checks the resource token, the presented token and their binding.
+  - `Delegation.verifyUpstreamToken` and `Delegation.verifySubagentToken` handle call chaining
+    and sub-agents.
+  - Token issuance passes the agent, presented, upstream and mission bounds explicitly.
+  - Auth tokens now carry `tenant`.
+- **Retired local stand-ins:** my own cross-checks and lifetime checks, and the
+  `revoked_presented_token` recoding; the library reports those codes itself.
+- **Draft-10 boundaries:**
+  - Draft-10 resource tokens still go through `compat10`. A draft-11 resource token on `/token`
+    is refused.
+  - The Agent Server refuses registration keys without a fully-specified `alg` (400).
+- **Tests:** they use port-less HTTPS identifiers. `HostRoutes` maps a fake server's identifier
+  to its local socket.
+- **Consequence:** the Python reference's signed draft-10 scripts (Python `aauth` 0.3.0,
+  `alg: EdDSA`) are refused; see the README interop table. Accepting them would mean verifying
+  `EdDSA`-labelled JWTs outside the library, which this repo's rules forbid.

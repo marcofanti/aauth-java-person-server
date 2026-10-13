@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.marcofanti.aauth.personserver.Json;
+import io.github.marcofanti.aauth.personserver.ps.AgentTokenForge;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
@@ -20,6 +21,7 @@ import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import io.github.marcofanti.aauth.tokens.PersonTokens;
+import io.github.marcofanti.aauth.tokens.TokenVerifier;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -44,7 +46,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class PsPersonTokenEndpointHttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -102,13 +106,15 @@ class PsPersonTokenEndpointHttpTest {
     private PsContainer ps;
 
     private static String agentToken(String sub, KeyPair key, long exp, String parentAgent) {
-        AgentTokens.Spec.Builder builder = AgentTokens.Spec.builder(
-                        PS_ORIGIN, sub, jwk(key, "eph"), AS_KEY.getPrivate(), "as-kid")
-                .exp(exp);
         if (parentAgent != null) {
-            builder.parentAgent(parentAgent);
+            // Forged: the library refuses to mint a sub-agent token for a parent it did not verify.
+            return AgentTokenForge.sign(
+                    PS_ORIGIN, sub, jwk(key, "eph"), AS_KEY.getPrivate(), "as-kid", exp, parentAgent);
         }
-        return AgentTokens.create(builder.build());
+        return AgentTokens.create(
+                AgentTokens.Spec.builder(PS_ORIGIN, sub, jwk(key, "eph"), AS_KEY.getPrivate(), "as-kid")
+                        .exp(exp)
+                        .build());
     }
 
     private static String agentToken() {
@@ -119,15 +125,16 @@ class PsPersonTokenEndpointHttpTest {
         SignRequest.Builder spec = SignRequest.builder(method, PS_ORIGIN + path)
                 .headers(
                         body == null
-                                ? Map.of("Host", "localhost")
-                                : Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                                ? Map.of("Host", "ps.example")
+                                : Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .keyPair(key)
                 .scheme(new SignatureScheme.Jwt(token));
         if (body != null) {
             spec.body(body).additionalComponents(BODY_COMPONENTS);
         }
         Map<String, String> headers = RequestSigner.sign(spec.build());
-        MockHttpServletRequestBuilder request = "GET".equals(method) ? get(path) : post(path);
+        MockHttpServletRequestBuilder request =
+                "GET".equals(method) ? get(REQUEST_BASE + path) : post(REQUEST_BASE + path);
         if (body != null) {
             request.contentType(JSON_UTF8).content(body);
         }
@@ -153,11 +160,11 @@ class PsPersonTokenEndpointHttpTest {
         String code = (String) pending.get("code");
         String pendingId = (String) pending.get("pending_id");
 
-        mvc.perform(get("/consent").param("code", code))
+        mvc.perform(get(REQUEST_BASE + "/consent").param("code", code))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pending_kind").value("person_token"))
                 .andExpect(jsonPath("$.resource_iss").value(RESOURCE));
-        mvc.perform(post("/consent/" + pendingId + "/decision")
+        mvc.perform(post(REQUEST_BASE + "/consent/" + pendingId + "/decision")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"approved\":true}"))
                 .andExpect(status().isOk());
@@ -173,13 +180,13 @@ class PsPersonTokenEndpointHttpTest {
         // §11.3.3 (PS-101): a body must be covered by content-digest and content-type.
         byte[] body = Json.write(Map.of("resource", RESOURCE)).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/person-token")
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken()))
                 .build());
         MockHttpServletRequestBuilder request =
-                post("/person-token").contentType(JSON_UTF8).content(body);
+                post(REQUEST_BASE + "/person-token").contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         mvc.perform(request)
                 .andExpect(status().isUnauthorized())
@@ -190,7 +197,7 @@ class PsPersonTokenEndpointHttpTest {
     void bodyAlteredAfterSigningIsRejected() throws Exception {
         byte[] signedBody = Json.write(Map.of("resource", RESOURCE)).getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/person-token")
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(signedBody)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken()))
@@ -198,7 +205,7 @@ class PsPersonTokenEndpointHttpTest {
                 .build());
         byte[] tampered = Json.write(Map.of("resource", "https://evil.example")).getBytes(StandardCharsets.UTF_8);
         MockHttpServletRequestBuilder request =
-                post("/person-token").contentType(JSON_UTF8).content(tampered);
+                post(REQUEST_BASE + "/person-token").contentType(JSON_UTF8).content(tampered);
         headers.forEach(request::header);
         mvc.perform(request)
                 .andExpect(status().isUnauthorized())
@@ -222,8 +229,10 @@ class PsPersonTokenEndpointHttpTest {
     void approvedFirstUseIssuesADraft11PersonToken() throws Exception {
         String token = approveFirstUse();
 
-        Map<String, Object> claims =
-                PersonTokens.verify(token, iss -> ps.psSigning().getJwks(), RESOURCE);
+        Map<String, Object> claims = PersonTokens.verify(
+                token,
+                (id, dwk, kid) -> ps.psSigning().getJwks(),
+                TokenVerifier.Options.forType(null).withAudience(RESOURCE));
         assertThat(claims)
                 .containsEntry("iss", PS_ORIGIN)
                 .containsEntry("aud", RESOURCE)

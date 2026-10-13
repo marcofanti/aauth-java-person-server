@@ -150,7 +150,7 @@ public final class Draft11Missions {
         }
         for (String resource : resources) {
             try {
-                String normalized = MissionUtils.stripTrailingSlash(Identifiers.validateServerUrl(resource));
+                String normalized = Identifiers.validateServerIdentifier(MissionUtils.stripTrailingSlash(resource));
                 if (!out.contains(normalized)) {
                     out.add(normalized);
                 }

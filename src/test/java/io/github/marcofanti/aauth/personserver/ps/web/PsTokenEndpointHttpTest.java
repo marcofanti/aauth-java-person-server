@@ -8,8 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.github.marcofanti.aauth.personserver.Draft10ResourceTokens;
 import io.github.marcofanti.aauth.personserver.Json;
+import io.github.marcofanti.aauth.personserver.ps.AgentTokenForge;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
+import io.github.marcofanti.aauth.personserver.ps.ResourceTokenForge;
+import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.RequestSigner;
 import io.github.marcofanti.aauth.signing.SignRequest;
 import io.github.marcofanti.aauth.signing.SignatureScheme;
@@ -17,7 +20,6 @@ import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -39,11 +41,12 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class PsTokenEndpointHttpTest {
 
-    // MockMvc reconstructs request URLs as http://localhost, so the PS origin must match
-    // for RFC 9421 @authority coverage and agent-token iss checks.
-    private static final String PS_ORIGIN = "http://localhost";
+    // Requests go to this absolute URL so the signed @authority and the agent-token iss match it.
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final String RESOURCE_ISS = "https://rs.example";
-    private static final String AGENT_ID = "mode3-test-agent";
+    private static final String AGENT_ID = "aauth:mode3-test-agent@agent-server.example";
 
     private static final KeyPair EPHEMERAL_KEY = KeyPairs.generateEd25519();
     private static final KeyPair AS_KEY = KeyPairs.generateEd25519();
@@ -133,13 +136,13 @@ class PsTokenEndpointHttpTest {
     private MockHttpServletRequestBuilder signedTokenPost(String resourceToken, String agentToken) {
         byte[] body = Json.write(Map.of("resource_token", resourceToken)).getBytes(StandardCharsets.UTF_8);
         Map<String, String> signedHeaders = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/token")
-                .headers(Map.of("Host", "localhost", "Content-Type", "application/json"))
+                .headers(Map.of("Host", "ps.example", "Content-Type", "application/json"))
                 .body(body)
                 .keyPair(EPHEMERAL_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken))
                 .build());
         MockHttpServletRequestBuilder request =
-                post("/token").contentType("application/json").content(body);
+                post(REQUEST_BASE + "/token").contentType("application/json").content(body);
         signedHeaders.forEach(request::header);
         return request;
     }
@@ -148,21 +151,23 @@ class PsTokenEndpointHttpTest {
     void draft11ResourceTokenOnTheLegacyPathIsRejected() throws Exception {
         // Dual-stack must not let a draft-11 agent skip the presented-token cross-check (§6.7.2)
         // by calling the draft-10 token_endpoint.
-        String resourceToken = ResourceTokens.create(new ResourceTokens.Spec(
+        String resourceToken = ResourceTokenForge.sign(
                 RESOURCE_ISS,
-                PS_ORIGIN,
-                agentJkt(),
-                "demo.scope",
-                PS_ORIGIN,
-                "directed-sub-123",
-                "presented-jti-1",
+                Map.of(
+                        "aud",
+                        PS_ORIGIN,
+                        "ps",
+                        PS_ORIGIN,
+                        "sub",
+                        "directed-sub-123",
+                        "presented_jti",
+                        "presented-jti-1",
+                        "agent_jkt",
+                        agentJkt(),
+                        "scope",
+                        "demo.scope"),
                 RS_KEY.getPrivate(),
-                "rs-kid",
-                Instant.now().getEpochSecond() + 3600,
-                null,
-                null,
-                null,
-                null));
+                "rs-kid");
         mvc.perform(signedTokenPost(resourceToken, agentJwt(PS_ORIGIN)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_resource_token"));
@@ -202,25 +207,24 @@ class PsTokenEndpointHttpTest {
         assertThat(claims).containsEntry("dwk", "aauth-person.json");
         assertThat(claims.get("act")).isEqualTo(Map.of("sub", AGENT_ID));
 
-        // Full verification against the PS's own JWKS (kid + EdDSA signature + audience).
-        Map<String, Object> verified = AuthTokens.verifyToken(
-                authToken, iss -> ps.psSigning().getJwks(), AuthTokens.VerifyOptions.forType(AuthTokens.TYPE));
-        assertThat(verified).containsEntry("aud", RESOURCE_ISS);
+        // A draft-10 token is outside the strict draft-11 verifier; check its signature directly.
+        assertThat(Jwts.verifySignature(
+                        Jwts.parse(authToken), ps.psSigning().keyPair().getPublic()))
+                .isTrue();
     }
 
     @Test
     void subAgentTokenCannotRequestAuthorizationDirectly() throws Exception {
         // Draft-10 §11: parent_agent marks a sub-agent; the PS enforces the single-level
         // rule — a sub-agent must not request authorization directly.
-        String subAgentToken = AgentTokens.create(AgentTokens.Spec.builder(
-                        PS_ORIGIN,
-                        "aauth:planner.7f3c+search1@agent-server.example",
-                        eddsaJwk(EPHEMERAL_KEY, "eph"),
-                        AS_KEY.getPrivate(),
-                        "as-kid")
-                .exp(Instant.now().getEpochSecond() + 3600)
-                .parentAgent("aauth:planner.7f3c@agent-server.example")
-                .build());
+        String subAgentToken = AgentTokenForge.sign(
+                PS_ORIGIN,
+                "aauth:planner.7f3c+search1@agent-server.example",
+                eddsaJwk(EPHEMERAL_KEY, "eph"),
+                AS_KEY.getPrivate(),
+                "as-kid",
+                Instant.now().getEpochSecond() + 3600,
+                "aauth:planner.7f3c@agent-server.example");
         MvcResult denied = mvc.perform(signedTokenPost(resourceJwt("demo.scope", PS_ORIGIN), subAgentToken))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_agent_token"))
@@ -233,7 +237,7 @@ class PsTokenEndpointHttpTest {
     void unsupportedSignatureSchemeAdvertisesAccepted() throws Exception {
         // Draft-10 posture: unknown Signature-Key schemes are rejected with
         // Signature-Error plus Accept-Signature-Scheme / Accept-Signature-Alg.
-        mvc.perform(post("/mission")
+        mvc.perform(post(REQUEST_BASE + "/mission")
                         .contentType("application/json")
                         .content("{\"description\":\"x\"}")
                         .header("Signature-Input", "sig=(\"@method\");created=1")
@@ -287,7 +291,9 @@ class PsTokenEndpointHttpTest {
 
     @Test
     void missingSignatureHeadersRejectedWithInvalidSignature() throws Exception {
-        mvc.perform(post("/token").contentType("application/json").content(Json.write(Map.of("resource_token", "x"))))
+        mvc.perform(post(REQUEST_BASE + "/token")
+                        .contentType("application/json")
+                        .content(Json.write(Map.of("resource_token", "x"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_signature"));
     }

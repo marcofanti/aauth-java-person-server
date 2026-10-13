@@ -14,6 +14,7 @@ import io.github.marcofanti.aauth.personserver.ps.PendingDeniedException;
 import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
 import io.github.marcofanti.aauth.personserver.ps.PsWiring;
+import io.github.marcofanti.aauth.personserver.ps.ResourceTokenForge;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.RequestSigner;
@@ -27,7 +28,7 @@ import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import io.github.marcofanti.aauth.tokens.AuthTokens;
-import io.github.marcofanti.aauth.tokens.ResourceTokens;
+import io.github.marcofanti.aauth.tokens.TokenVerifier;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.time.Instant;
@@ -50,7 +51,9 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class PsFourPartyHttpTest {
 
-    private static final String PS_ORIGIN = "http://localhost";
+    private static final String PS_ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = PS_ORIGIN + ":443";
     private static final List<String> BODY_COMPONENTS = List.of("content-type", "content-digest");
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
@@ -141,22 +144,15 @@ class PsFourPartyHttpTest {
 
     /** A four-party resource token: {@code aud} is the resource's AS, {@code ps} is this PS. */
     private static String resourceToken(String presented, String scope) {
-        Map<String, Object> claims = Jwts.parse(presented).payload();
-        return ResourceTokens.create(new ResourceTokens.Spec(
+        return ResourceTokenForge.derivedFrom(
+                presented,
                 RESOURCE_ISS,
                 AS.origin(),
                 Jwk.thumbprint(jwk(AGENT_KEY, "eph")),
                 scope,
-                PS_ORIGIN,
-                String.valueOf(claims.get("sub")),
-                String.valueOf(claims.get("jti")),
                 RS_KEY.getPrivate(),
                 "rs-kid",
-                inOneHour(),
-                null,
-                null,
-                null,
-                null));
+                Map.of());
     }
 
     private MvcResult requestAuthToken(String person) throws Exception {
@@ -167,13 +163,13 @@ class PsFourPartyHttpTest {
         byte[] body = Json.write(Map.of("resource_token", resourceToken(person, scope), "presented_token", person))
                 .getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/auth-token")
-                .headers(Map.of("Host", "localhost", "Content-Type", JSON_UTF8))
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
                 .body(body)
                 .keyPair(AGENT_KEY)
                 .scheme(new SignatureScheme.Jwt(agentToken()))
                 .additionalComponents(BODY_COMPONENTS)
                 .build());
-        var request = post("/auth-token").contentType(JSON_UTF8).content(body);
+        var request = post(REQUEST_BASE + "/auth-token").contentType(JSON_UTF8).content(body);
         headers.forEach(request::header);
         return mvc.perform(request).andReturn();
     }
@@ -293,12 +289,23 @@ class PsFourPartyHttpTest {
                 Map.of("sub", "someone-else"),
                 Map.of("aud", "https://other-rs.example"),
                 Map.of("scope", "calendar.read calendar.admin"),
-                Map.of("exp", inOneHour() + 600),
                 Map.of("cnf_jwk", jwk(STRANGER_KEY, "other")));
         for (Map<String, Object> overrides : bad) {
             AS.answer(request -> Answer.json(200, Map.of("auth_token", AS.authToken(request, overrides))));
             assertProblem(requestAuthToken(personToken()), 502, ProblemError.AS_UNREACHABLE);
         }
+    }
+
+    @Test
+    void anAuthTokenOutlivingThePresentedTokenIsAsUnreachable() throws Exception {
+        // Tokens never outlive an hour, so the presented token must be shorter for this to show.
+        long presentedExp = Instant.now().getEpochSecond() + 600;
+        PersonTokenRequest request = new PersonTokenRequest(
+                AGENT_ID, jwk(AGENT_KEY, "eph"), RESOURCE_ISS, null, null, presentedExp, null, null, null, null, null);
+        String person = ps.personTokenIssuer().issue(request, "user").personToken();
+        AS.answer(tokenRequest ->
+                Answer.json(200, Map.of("auth_token", AS.authToken(tokenRequest, Map.of("exp", presentedExp + 600)))));
+        assertProblem(requestAuthToken(person), 502, ProblemError.AS_UNREACHABLE);
     }
 
     @Test
@@ -319,11 +326,11 @@ class PsFourPartyHttpTest {
         MvcResult result = requestAuthToken(personToken());
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
         String token = (String) json(result).get("auth_token");
-        assertThat(AuthTokens.verifyToken(
+        assertThat(TokenVerifier.verify(
                         token,
-                        iss -> Map.of(
+                        (id, dwk, kid) -> Map.of(
                                 "keys", List.of(Jwk.publicKeyToJwk(AS.key().getPublic(), FakeAccessServer.KID))),
-                        AuthTokens.VerifyOptions.forType(AuthTokens.TYPE)))
+                        TokenVerifier.Options.forType(AuthTokens.TYPE)))
                 .containsEntry("scope", "calendar.read");
     }
 

@@ -45,7 +45,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class PortalHttpTest {
 
-    private static final String ORIGIN = "http://localhost";
+    private static final String ORIGIN = "https://ps.example";
+    // MockMvc gives an absolute URL without a port the default port 80; name 443 explicitly.
+    private static final String REQUEST_BASE = ORIGIN + ":443";
     private static final String RESOURCE_ISS = "https://rs.example";
     private static final KeyPair RS_KEY = KeyPairs.generateEd25519();
 
@@ -123,13 +125,14 @@ class PortalHttpTest {
         Map<String, String> signedHeaders = RequestSigner.sign(SignRequest.builder(method, ORIGIN + path)
                 .headers(
                         body == null
-                                ? Map.of("Host", "localhost")
-                                : Map.of("Host", "localhost", "Content-Type", "application/json"))
+                                ? Map.of("Host", "ps.example")
+                                : Map.of("Host", "ps.example", "Content-Type", "application/json"))
                 .body(body)
                 .keyPair(keyPair)
                 .scheme(scheme)
                 .build());
-        MockHttpServletRequestBuilder request = "GET".equals(method) ? get(path) : post(path);
+        MockHttpServletRequestBuilder request =
+                "GET".equals(method) ? get(REQUEST_BASE + path) : post(REQUEST_BASE + path);
         if (body != null) {
             request = request.contentType("application/json").content(body);
         }
@@ -141,7 +144,7 @@ class PortalHttpTest {
 
     @Test
     void mergedJwksContainsPsAndAsKeys() throws Exception {
-        MvcResult result = mvc.perform(get("/.well-known/jwks.json"))
+        MvcResult result = mvc.perform(get(REQUEST_BASE + "/.well-known/jwks.json"))
                 .andExpect(status().isOk())
                 .andReturn();
         Map<String, Object> jwks = Json.readMap(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
@@ -154,11 +157,11 @@ class PortalHttpTest {
 
     @Test
     void portalMetadataAlignsBothServersToOneOrigin() throws Exception {
-        mvc.perform(get("/.well-known/aauth-person.json"))
+        mvc.perform(get(REQUEST_BASE + "/.well-known/aauth-person.json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.issuer").value(ORIGIN))
                 .andExpect(jsonPath("$.token_endpoint").value(ORIGIN + "/token"));
-        mvc.perform(get("/.well-known/aauth-agent.json"))
+        mvc.perform(get(REQUEST_BASE + "/.well-known/aauth-agent.json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.issuer").value(ORIGIN))
                 .andExpect(jsonPath("$.client_name").value("AAuth Person Portal"))
@@ -167,29 +170,30 @@ class PortalHttpTest {
 
     @Test
     void portalUiIsServed() throws Exception {
-        mvc.perform(get("/ui/index.html")).andExpect(status().isOk());
-        mvc.perform(get("/ui/portal.html")).andExpect(status().isOk());
-        mvc.perform(get("/ui/consent.html")).andExpect(status().isOk());
+        mvc.perform(get(REQUEST_BASE + "/ui/index.html")).andExpect(status().isOk());
+        mvc.perform(get(REQUEST_BASE + "/ui/portal.html")).andExpect(status().isOk());
+        mvc.perform(get(REQUEST_BASE + "/ui/consent.html")).andExpect(status().isOk());
     }
 
     @Test
     void issuedTokensRouteRequiresAdminAndReturnsList() throws Exception {
-        mvc.perform(get("/admin/issued-tokens")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/admin/issued-tokens").header("Authorization", "Bearer wrong"))
+        mvc.perform(get(REQUEST_BASE + "/admin/issued-tokens")).andExpect(status().isUnauthorized());
+        mvc.perform(get(REQUEST_BASE + "/admin/issued-tokens").header("Authorization", "Bearer wrong"))
                 .andExpect(status().isForbidden());
-        mvc.perform(get("/admin/issued-tokens").header("Authorization", "Bearer mytoken"))
+        mvc.perform(get(REQUEST_BASE + "/admin/issued-tokens").header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }
 
     @Test
     void adminRoutesAcceptPersonTokenAndPersonRoutesAcceptAdminToken() throws Exception {
-        mvc.perform(get("/missions").header("Authorization", "Bearer mytoken")).andExpect(status().isOk());
-        mvc.perform(get("/person/registrations").header("Authorization", "Bearer mytoken"))
+        mvc.perform(get(REQUEST_BASE + "/missions").header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk());
-        mvc.perform(get("/person/bindings").header("Authorization", "Bearer mytoken"))
+        mvc.perform(get(REQUEST_BASE + "/person/registrations").header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk());
-        mvc.perform(get("/user/missions").header("Authorization", "Bearer mytoken"))
+        mvc.perform(get(REQUEST_BASE + "/person/bindings").header("Authorization", "Bearer mytoken"))
+                .andExpect(status().isOk());
+        mvc.perform(get(REQUEST_BASE + "/user/missions").header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk());
     }
 
@@ -217,7 +221,8 @@ class PortalHttpTest {
                 .andExpect(jsonPath("$.status").value("pending"));
 
         // 3. Person approves; agent polls its aa-agent+jwt.
-        mvc.perform(post("/person/registrations/" + pendingId + "/approve").header("Authorization", "Bearer mytoken"))
+        mvc.perform(post(REQUEST_BASE + "/person/registrations/" + pendingId + "/approve")
+                        .header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk());
         MvcResult polled = mvc.perform(
                         signed("GET", "/register/pending/" + pendingId, null, ephemeralKey, new SignatureScheme.Hwk()))
@@ -260,7 +265,7 @@ class PortalHttpTest {
         assertThat(claims).containsEntry("account", "acct-1234");
 
         // 5. The issuance is visible on the portal's admin issued-tokens route.
-        mvc.perform(get("/admin/issued-tokens").header("Authorization", "Bearer mytoken"))
+        mvc.perform(get(REQUEST_BASE + "/admin/issued-tokens").header("Authorization", "Bearer mytoken"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].agent_id").value(agentId))
                 .andExpect(jsonPath("$[0].resource_iss").value(RESOURCE_ISS))
@@ -271,6 +276,7 @@ class PortalHttpTest {
     void psOwnsPendingPathOnPortal() throws Exception {
         // /pending/{id} on the portal is the PS consent poll — unknown ids give the PS 404
         // body, and the AS standalone poll route is not mapped.
-        mvc.perform(get("/pending/unknown-id").header("X-AAuth-Agent-Id", "x")).andExpect(status().isUnauthorized());
+        mvc.perform(get(REQUEST_BASE + "/pending/unknown-id").header("X-AAuth-Agent-Id", "x"))
+                .andExpect(status().isUnauthorized());
     }
 }

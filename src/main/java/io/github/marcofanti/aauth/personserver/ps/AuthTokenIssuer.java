@@ -136,15 +136,28 @@ public final class AuthTokenIssuer {
         if (missionS256 == null && spec.mission() != null) {
             missionS256 = spec.mission().s256();
         }
-        return AuthTokens.create(AuthTokens.Spec.builder(iss, resourceIss, stringClaim(resourceClaims, "sub"), iss)
+        // exp already folds in the agent token, presented token, upstream and mission bounds.
+        AuthTokens.Spec.Builder builder = AuthTokens.Spec.builder(
+                        iss, resourceIss, stringClaim(resourceClaims, "sub"), iss)
                 .cnfJwk(spec.agentCnfJwk())
                 .signingKey(signing.keyPair().getPrivate(), signing.kid())
-                .scope(scope.isEmpty() ? null : scope)
+                .bounds(exp, exp)
                 .exp(exp)
-                .missionS256(missionS256)
-                .dwk("aauth-person.json")
-                .account(account)
-                .build());
+                .dwk(AuthTokens.DWK_PERSON);
+        if (!scope.isEmpty()) {
+            builder.scope(scope);
+        }
+        if (missionS256 != null) {
+            builder.missionS256(missionS256).missionExp(exp);
+        }
+        String tenant = stringClaim(resourceClaims, "tenant");
+        if (tenant != null) {
+            builder.tenant(tenant);
+        }
+        if (account != null) {
+            builder.account(account);
+        }
+        return AuthTokens.create(builder.build());
     }
 
     private static String stringClaim(Map<String, Object> claims, String name) {

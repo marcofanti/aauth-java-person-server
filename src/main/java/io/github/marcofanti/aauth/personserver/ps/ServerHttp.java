@@ -54,7 +54,9 @@ public final class ServerHttp {
         Map<String, String> headers = new LinkedHashMap<>(signedHeaders("POST", url, bytes));
         headers.put("Content-Type", JSON);
         return send(
-                HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.ofByteArray(bytes)), headers);
+                HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(bytes)),
+                headers);
     }
 
     /**
@@ -67,7 +69,7 @@ public final class ServerHttp {
         HttpResponse<String> response;
         try {
             response = client.send(
-                    HttpRequest.newBuilder(URI.create(url))
+                    HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
                             .header("Accept", JSON)
                             .timeout(TIMEOUT)
                             .GET()
@@ -87,7 +89,7 @@ public final class ServerHttp {
 
     /** Signed GET with no body (pending-URL polling, §11.8). */
     public HttpResponse<String> get(String url) throws IOException, InterruptedException {
-        return send(HttpRequest.newBuilder(URI.create(url)).GET(), signedHeaders("GET", url, null));
+        return send(HttpRequest.newBuilder(HostRoutes.route(URI.create(url))).GET(), signedHeaders("GET", url, null));
     }
 
     private Map<String, String> signedHeaders(String method, String url, byte[] body) {
