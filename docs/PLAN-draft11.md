@@ -165,3 +165,12 @@ Four-party gaps (2026-10-12): an AS `requirement=interaction` or `clarification`
 the 20-second deadline rather than passed down to the agent, and a 402 is `as_unreachable` (no
 payment support). A relayed AS error on a deferred request reaches the agent as polling error
 `<error>` with 403 (502 for `as_unreachable`), since pending failures carry a code, not a status.
+
+Phase 7 (2026-10-12): the Agent Server records the agent tokens it mints and, when the person
+revokes a binding, revokes that agent's live tokens at the PS named in `ps` (signed
+`jwks_uri;dwk=aauth-agent.json`, in the background; records are in memory, so tokens minted
+before a restart live until `exp`). Uppercase agent locals: the Agent Server mints UUID locals
+and validates none (`AgentIds.isValidAgentId` has no callers), so nothing changes there. Python
+interop rerun and `demo/demo.sh` pass on this branch. Left for the user:
+`aauth-full-java-demo` acceptance on draft-11 (that repo has uncommitted work), and the
+library release that lets this branch leave `0.3.0-SNAPSHOT`.

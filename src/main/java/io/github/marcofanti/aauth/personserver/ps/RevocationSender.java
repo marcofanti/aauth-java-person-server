@@ -24,6 +24,8 @@ public final class RevocationSender {
 
     /** Metadata document of a resource, which revokes person and auth tokens it accepted. */
     public static final String RESOURCE_METADATA = "aauth-resource.json";
+    /** Metadata document of a PS, where an agent provider revokes agent tokens (§11.12.2). */
+    public static final String PERSON_METADATA = "aauth-person.json";
     /** Metadata document of an AS, which revokes person tokens the PS presented to it. */
     public static final String ACCESS_METADATA = "aauth-access.json";
 

@@ -196,8 +196,8 @@ public final class PsWiring {
         MemoryPendingStore store = new MemoryPendingStore(backend, origin, options.pendingTtlSeconds());
         PsSigningService psSigning = new PsSigningService(options.signingKeyPath());
         PersonTokenLedger personTokenLedger = new MemoryPersonTokenLedger();
-        AsFederator federator =
-                new HttpAsFederator(new FakeAsFederator(), new ServerHttp(origin, psSigning), personTokenLedger);
+        AsFederator federator = new HttpAsFederator(
+                new FakeAsFederator(), ServerHttp.personServer(origin, psSigning), personTokenLedger);
         MemoryAgentServerTrustRegistry trust = new MemoryAgentServerTrustRegistry(options.trustFile());
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
         Function<String, Map<String, Object>> resourceResolver =

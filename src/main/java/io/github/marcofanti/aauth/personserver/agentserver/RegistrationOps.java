@@ -38,7 +38,7 @@ public final class RegistrationOps {
         Binding existing = container.bindings().lookupByStableJkt(stableJkt);
         if (existing != null && !existing.revoked()) {
             container.bindings().updateAgentName(existing.agentId(), agentName);
-            String token = container.signing().createAgentToken(existing.agentId(), verified.ephemeralPub(), null);
+            String token = issueAgentToken(container, existing.agentId(), verified.ephemeralPub());
             return new RegisterResult.Immediate(token);
         }
 
@@ -72,7 +72,7 @@ public final class RegistrationOps {
         if (binding == null || binding.revoked()) {
             throw new BindingNotFoundException();
         }
-        String token = container.signing().createAgentToken(binding.agentId(), registration.ephemeralPub(), null);
+        String token = issueAgentToken(container, binding.agentId(), registration.ephemeralPub());
         return new PollResult.Token(token);
     }
 
@@ -103,6 +103,13 @@ public final class RegistrationOps {
         if (binding.revoked()) {
             throw new BindingRevokedException();
         }
-        return container.signing().createAgentToken(binding.agentId(), verified.ephemeralPub(), null);
+        return issueAgentToken(container, binding.agentId(), verified.ephemeralPub());
+    }
+
+    /** Mint an agent token and remember it, so revoking the binding can revoke it (§11.12.2). */
+    private static String issueAgentToken(AsContainer container, String agentId, Map<String, Object> ephemeralPub) {
+        String token = container.signing().createAgentToken(agentId, ephemeralPub, null);
+        container.tokenRevocation().record(token);
+        return token;
     }
 }

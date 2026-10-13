@@ -17,7 +17,7 @@ class RevocationSenderTest {
     private static final String PS_ORIGIN = "https://ps.example";
 
     private final PsSigningService signing = new PsSigningService(null);
-    private final RevocationSender sender = new RevocationSender(new ServerHttp(PS_ORIGIN, signing));
+    private final RevocationSender sender = new RevocationSender(ServerHttp.personServer(PS_ORIGIN, signing));
     private final FakeRevocationResource resource = new FakeRevocationResource();
 
     @AfterEach

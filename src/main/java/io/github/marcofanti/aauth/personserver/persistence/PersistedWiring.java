@@ -42,8 +42,8 @@ public final class PersistedWiring {
         SqlPendingStore store = new SqlPendingStore(dataSource, mission, origin, options.pendingTtlSeconds());
         PsSigningService psSigning = new PsSigningService(options.signingKeyPath());
         PersonTokenLedger personTokenLedger = new SqlPersonTokenLedger(dataSource);
-        AsFederator federator =
-                new HttpAsFederator(new FakeAsFederator(), new ServerHttp(origin, psSigning), personTokenLedger);
+        AsFederator federator = new HttpAsFederator(
+                new FakeAsFederator(), ServerHttp.personServer(origin, psSigning), personTokenLedger);
         SqlTrustRegistry trust = new SqlTrustRegistry(dataSource);
         trust.importFromFileIfEmpty(options.trustFile());
         ConsentScopeStore consentScopes = new ConsentScopeStore(options.consentScopesFile());
@@ -116,6 +116,7 @@ public final class PersistedWiring {
                 new SqlAgentServerStores.Registrations(dataSource, options.registrationTtl()),
                 new SqlAgentServerStores.Bindings(dataSource),
                 new ReplayCache(options.signatureWindow()),
-                signing);
+                signing,
+                AsContainer.tokenRevocation(options.issuer(), signing));
     }
 }

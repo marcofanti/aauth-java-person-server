@@ -14,6 +14,18 @@ reference; its walkthrough scripts run unchanged against this server.
 
 Plan: [docs/PLAN.md](docs/PLAN.md) · status and deviations: [docs/PROGRESS.md](docs/PROGRESS.md)
 
+## Protocol version
+
+The `draft11` branch speaks AAuth draft-11 (Signature-Keys draft-09) and still accepts
+draft-10 clients, so the Python walkthroughs below keep working. Draft-11 clients discover
+`auth_token_endpoint` (`/auth-token`), `person_token_endpoint` (`/person-token`),
+`mission_endpoint` (`/agent-missions`) and `revocation_endpoint` (`/revoke`); draft-10
+clients keep `/token` and `/mission`. Four-party federation, call chaining and the
+revocation cascade are draft-11 only. Status per checklist item:
+[docs/PLAN-draft11.md](docs/PLAN-draft11.md). The branch builds against
+aauth-java-library `0.3.0-SNAPSHOT` (install it locally from the library's `draft11`
+branch); CI stays red until that version is released.
+
 ## Build and test
 
 ```bash
@@ -61,7 +73,7 @@ AUTO=1 demo/demo.sh       # unattended smoke test
 
 Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides.html`).
 
-## Interop with the Python repo (verified 2026-07-30; re-verified 2026-08-06 on draft-10)
+## Interop with the Python repo (verified 2026-07-30; re-verified 2026-08-06 on draft-10 and 2026-10-12 on the dual-stack draft-11 branch)
 
 Draft-10 note: `ps-token-mode3.py` needs aauth-java-library ≥ 0.2.3 — earlier 0.2.x
 reject the script's legacy `alg: EdDSA` resource JWKS (fixed by

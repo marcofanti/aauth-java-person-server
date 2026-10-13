@@ -10,15 +10,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Requests the PS makes in its own right (§11.3.2): signed under the {@code jwks_uri} scheme with
- * {@code id} = the PS issuer and {@code dwk=aauth-person.json}, covering {@code content-digest}
- * and {@code content-type} whenever there is a body (§11.3.3).
+ * Requests a server makes in its own right (§11.3.2): signed under the {@code jwks_uri} scheme
+ * with {@code id} = its issuer and {@code dwk} = its metadata document, covering
+ * {@code content-digest} and {@code content-type} whenever there is a body (§11.3.3).
  */
 public final class ServerHttp {
 
@@ -30,12 +31,21 @@ public final class ServerHttp {
             .connectTimeout(TIMEOUT)
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
-    private final String psOrigin;
-    private final PsSigningService signing;
+    private final String issuer;
+    private final String dwk;
+    private final KeyPair keyPair;
+    private final String kid;
 
-    public ServerHttp(String psOrigin, PsSigningService signing) {
-        this.psOrigin = MissionUtils.stripTrailingSlash(psOrigin);
-        this.signing = signing;
+    public ServerHttp(String issuer, String dwk, KeyPair keyPair, String kid) {
+        this.issuer = MissionUtils.stripTrailingSlash(issuer);
+        this.dwk = dwk;
+        this.keyPair = keyPair;
+        this.kid = kid;
+    }
+
+    /** The Person Server signing as itself ({@code dwk=aauth-person.json}). */
+    public static ServerHttp personServer(String psOrigin, PsSigningService signing) {
+        return new ServerHttp(psOrigin, "aauth-person.json", signing.keyPair(), signing.kid());
     }
 
     /** Signed JSON POST. */
@@ -56,9 +66,8 @@ public final class ServerHttp {
         URI uri = URI.create(url);
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Host", uri.getRawAuthority());
-        SignRequest.Builder request = SignRequest.builder(method, url)
-                .keyPair(signing.keyPair())
-                .scheme(new SignatureScheme.JwksUri(psOrigin, "aauth-person.json", signing.kid()));
+        SignRequest.Builder request =
+                SignRequest.builder(method, url).keyPair(keyPair).scheme(new SignatureScheme.JwksUri(issuer, dwk, kid));
         if (body != null) {
             headers.put("Content-Type", JSON);
             request.body(body).additionalComponents(BODY_COMPONENTS);

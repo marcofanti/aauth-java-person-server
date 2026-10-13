@@ -95,6 +95,7 @@ public final class PersonOps {
             throw new BindingNotFoundException();
         }
         container.bindings().revoke(agentId);
+        container.tokenRevocation().revokeAll(agentId);
     }
 
     /** {@code POST /person/bindings} — trust a stable public JWK without a pending registration. */

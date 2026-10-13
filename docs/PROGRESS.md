@@ -76,6 +76,16 @@ and the derived `aauth-java-person-server.pptx`.
 
 ## Decision log
 
+- **2026-10-12 — AAuth draft-11, dual-stack** (branch `draft11`, plan and per-item status in
+  [PLAN-draft11.md](PLAN-draft11.md)): emits draft-11 while still accepting draft-10, built
+  against aauth-java-library `0.3.0-SNAPSHOT`. New endpoints `/auth-token`,
+  `/person-token`, `/agent-missions`, `/revoke`; problem+json errors and `Signature-Error`
+  codes on draft-11 paths; directed `sub` per resource; presented-token cross-checks;
+  real four-party federation to an AS (`HttpAsFederator`; draft-10 keeps the fake
+  federator); call chaining with `upstream_token`; the revocation cascade, including the
+  Agent Server revoking an agent's tokens at the PS when its binding is revoked. Draft-10
+  shapes live only in `compat10`. The Python interop scripts and `demo/demo.sh` pass
+  unchanged.
 - **2026-08-07 — aauth-java-library 0.2.2 → 0.2.3**: PR #8 bumped to 0.2.2 (pom-only),
   which shipped the library's loose `ps`-claim validation but was tagged before the
   EdDSA JWK tolerance landed — so the mode-3 Python interop stayed broken on it. 0.2.3
@@ -164,8 +174,10 @@ and the derived `aauth-java-person-server.pptx`.
   pending rows serialize the whole record as JSON (`record_json`), like the Python serde.
   SQLAlchemy-style `AAUTH_DATABASE_URL` values (`sqlite:///…`, `postgresql+psycopg://…`)
   are translated to JDBC; SQLite runs with a single-connection pool.
-- **SQL mode keeps memory brokers** (Python parity): `getRecord` returns detached
-  snapshots, so post-create field mutations (verified claims, evaluator reason) are not
-  persisted — consent re-verifies the resource token, matching the Python behavior.
+- **SQL mode persists in-place pending changes** (diverges from Python): `getRecord`
+  returns a detached snapshot, so the broker calls `PendingRequestStore.saveRecord` after
+  setting verified claims, the agent key, the evaluator reason, clarification rounds or a
+  deadline (a no-op in memory). The Python reference loses these in SQL mode; draft-11
+  needs them (revoked resource tokens end their pendings, upstream expiry ends chained ones).
 - **Boot `DataSourceAutoConfiguration` excluded**: database mode is driven by
   `AAUTH_DATABASE_URL`, not `spring.datasource.*`.

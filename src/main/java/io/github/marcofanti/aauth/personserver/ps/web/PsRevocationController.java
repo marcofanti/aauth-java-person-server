@@ -48,7 +48,7 @@ public class PsRevocationController {
     public PsRevocationController(PsContainer ps, PsSettings settings) {
         this.ps = ps;
         this.psOrigin = IssuerUrls.normalizeIssuer(settings.origin());
-        RevocationSender sender = new RevocationSender(new ServerHttp(psOrigin, ps.psSigning()));
+        RevocationSender sender = new RevocationSender(ServerHttp.personServer(psOrigin, ps.psSigning()));
         this.service = new RevocationService(
                 psOrigin,
                 new RevocationService.Deps(

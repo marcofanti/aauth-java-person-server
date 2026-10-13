@@ -29,12 +29,17 @@ public final class FakeRevocationResource implements AutoCloseable {
     private volatile String responseBody = "";
 
     public FakeRevocationResource() {
+        this("aauth-resource.json");
+    }
+
+    /** A recipient publishing {@code revocation_endpoint} in {@code metadataDocument} (e.g. a PS's). */
+    public FakeRevocationResource(String metadataDocument) {
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-        server.createContext("/.well-known/aauth-resource.json", this::metadata);
+        server.createContext("/.well-known/" + metadataDocument, this::metadata);
         server.createContext("/revoke", this::revoke);
         server.start();
     }
