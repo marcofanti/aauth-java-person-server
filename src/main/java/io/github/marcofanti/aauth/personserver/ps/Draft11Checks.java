@@ -18,6 +18,7 @@ final class Draft11Checks {
 
     private static final String RESOURCE_DWK = "aauth-resource.json";
     private static final String PERSON_DWK = "aauth-person.json";
+    private static final String ACCESS_DWK = "aauth-access.json";
 
     private final String psOrigin;
     private final Function<String, Map<String, Object>> resourceJwks;
@@ -53,7 +54,7 @@ final class Draft11Checks {
         try {
             claims = ResourceTokens.verify(
                     request.resourceToken(),
-                    keys(),
+                    keys(presented),
                     new ResourceTokens.VerifyOptions(
                             presented,
                             audienceOf(request.resourceToken()),
@@ -82,16 +83,20 @@ final class Draft11Checks {
     }
 
     /**
-     * Resource keys come from the resource; presented person and auth tokens are ones this PS
-     * issued, so only its own keys verify them. Other issuers arrive only through federation.
+     * Resource keys come from the resource. A presented person token or auth token is one this PS
+     * issued, or an auth token from an AS this PS presented a person token to for the same
+     * resource and person (four-party step-up, §7.2.1).
      */
-    private JwksFetcher keys() {
+    private JwksFetcher keys(String presented) {
         return (id, dwk, kid) -> {
             if (RESOURCE_DWK.equals(dwk)) {
                 return resourceJwks.apply(id);
             }
             if (PERSON_DWK.equals(dwk) && psOrigin.equals(MissionUtils.stripTrailingSlash(id))) {
                 return ownJwks.apply(id);
+            }
+            if (ACCESS_DWK.equals(dwk)) {
+                return upstreamTokens.federatedAccessServerJwks(Jwts.parse(presented), id);
             }
             return null;
         };

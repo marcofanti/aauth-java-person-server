@@ -165,7 +165,11 @@ class PsFourPartyHttpTest {
     }
 
     private MvcResult requestAuthToken(String person, String scope) throws Exception {
-        byte[] body = Json.write(Map.of("resource_token", resourceToken(person, scope), "presented_token", person))
+        return requestAuthTokenWith(resourceToken(person, scope), person);
+    }
+
+    private MvcResult requestAuthTokenWith(String resourceToken, String presented) throws Exception {
+        byte[] body = Json.write(Map.of("resource_token", resourceToken, "presented_token", presented))
                 .getBytes(StandardCharsets.UTF_8);
         Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/auth-token")
                 .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
@@ -529,5 +533,41 @@ class PsFourPartyHttpTest {
         assertThat(waiting.code()).isEqualTo("AS12-CD34");
         assertThatThrownBy(() -> ps.userConsent().recordDecision(pendingId, new UserDecision(true)))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void anAuthTokenFromAnAccessServerThisPsFederatedWithIsAcceptedAsPresentedToken() throws Exception {
+        MvcResult first = requestAuthToken(personToken());
+        String authToken = (String) json(first).get("auth_token");
+
+        MvcResult stepUp = requestAuthTokenWith(resourceToken(authToken, "calendar.read"), authToken);
+
+        assertThat(stepUp.getResponse().getStatus()).isEqualTo(200);
+        assertThat(AS.received().getLast().json()).containsEntry("presented_token", authToken);
+    }
+
+    @Test
+    void anAuthTokenFromAnAccessServerThisPsNeverFederatedWithIsRefused() throws Exception {
+        try (FakeAccessServer stranger = new FakeAccessServer()) {
+            String strangerToken = stranger.authToken(
+                    new FakeAccessServer.Received(
+                            "POST",
+                            "/auth-token",
+                            Map.of(),
+                            Json.write(Map.of(
+                                            "resource_token",
+                                            resourceToken(personToken(), "calendar.read"),
+                                            "presented_token",
+                                            personToken(),
+                                            "agent_token",
+                                            agentToken()))
+                                    .getBytes(StandardCharsets.UTF_8)),
+                    Map.of());
+
+            MvcResult result = requestAuthTokenWith(resourceToken(strangerToken, "calendar.read"), strangerToken);
+
+            assertThat(result.getResponse().getStatus()).isEqualTo(400);
+            assertThat(stranger.received()).isEmpty();
+        }
     }
 }
