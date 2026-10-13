@@ -51,10 +51,11 @@ byte-for-byte with aauth-full-java-demo, and both repos use the same hostnames:
 | `ps.uma.lab` | `127.0.0.1:8765` | Person Server |
 | `as.uma.lab` | `127.0.0.1:8765` | the portal's Agent Server (same process, own identifier) |
 | `sca.uma.lab`, `maa.uma.lab` | `127.0.0.1:9999`, `:9998` | demo resources (aauth-full-java-demo) |
+| `rs.uma.lab` | `127.0.0.1:9997` | the draft-11 walkthrough's resource (`demo/secure-demo.sh`) |
 
 One-time setup:
 
-1. Add `127.0.0.1 ps.uma.lab as.uma.lab sca.uma.lab maa.uma.lab` to `/etc/hosts` (sudo).
+1. Add `127.0.0.1 ps.uma.lab as.uma.lab sca.uma.lab maa.uma.lab rs.uma.lab` to `/etc/hosts` (sudo).
 2. `brew install caddy mkcert && mkcert -install` (trusts mkcert's local CA).
 3. `scripts/setup-tls.sh` creates the `*.uma.lab` certificate and a JVM truststore in
    `~/.local/share/uma-lab-tls/`.
@@ -102,6 +103,9 @@ portal UI on the other — plus a slide deck. See [demo/README.md](demo/README.m
 demo/run-demo.sh          # terminal 1: the server (in-memory, demo tokens)
 demo/demo.sh              # terminal 2: seven acts, pauses for your UI turns
 AUTO=1 demo/demo.sh       # unattended smoke test
+
+demo/run-secure-demo.sh   # secure mode: the draft-11 walkthrough
+AUTO=1 demo/secure-demo.sh
 ```
 
 Slides: `demo/slides/aauth-java-person-server.pptx` (source: `demo/slides/slides.html`).

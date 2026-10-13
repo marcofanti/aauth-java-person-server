@@ -6,7 +6,8 @@
 # AAuth draft-11 identifiers are HTTPS origins without a port, so the portal is reached
 # through the shared Caddy front (caddy/Caddyfile) as https://ps.uma.lab (Person Server)
 # and https://as.uma.lab (its Agent Server), and listens on 127.0.0.1:8765 only.
-# One-time setup: /etc/hosts entries for ps.uma.lab and as.uma.lab, `mkcert -install`,
+# One-time setup: /etc/hosts entries for ps.uma.lab, as.uma.lab and (for demo/secure-demo.sh)
+# rs.uma.lab, `mkcert -install`,
 # then scripts/setup-tls.sh.
 set -euo pipefail
 
