@@ -42,6 +42,7 @@ public final class MemoryTokenBroker implements TokenBroker {
     private final ConsentScopeStore consentScopes;
     private final String agentJwtStub;
     private final boolean autoApproveWithoutConsent;
+    private final AsRelay asRelay;
     private MissionEvaluator evaluator;
 
     @SuppressWarnings("ParameterNumber")
@@ -60,6 +61,7 @@ public final class MemoryTokenBroker implements TokenBroker {
             UpstreamTokens upstreamTokens) {
         this.store = store;
         this.federator = federator;
+        this.asRelay = new AsRelay(store, federator);
         this.mission = mission;
         this.psOrigin = IssuerUrls.normalizeIssuer(psOrigin);
         this.authIssuer = authIssuer;
@@ -106,7 +108,11 @@ public final class MemoryTokenBroker implements TokenBroker {
         String aud = IssuerUrls.normalizeAudClaim(resourceClaims.get("aud"));
         if (!IssuerUrls.issuerUrlsEquivalent(aud, psOrigin)) {
             if (request.draft11() != null) {
-                return federator.federateDraft11(request, resourceClaims);
+                return asRelay.open(
+                        request,
+                        resourceClaims,
+                        upstreamDeadline(request),
+                        federator.federateDraft11(request, resourceClaims));
             }
             return federator.requestAuthToken(request.resourceToken(), agentJwtStub, request.upstreamToken());
         }
@@ -289,6 +295,7 @@ public final class MemoryTokenBroker implements TokenBroker {
     @Override
     public PendingPollOutcome getPending(String pendingId, String agentId) {
         store.assertAgentOwnsPending(pendingId, agentId);
+        asRelay.refresh(pendingId);
         PendingStoreValue value = store.getPending(pendingId, true);
         if (!(value instanceof PendingPollOutcome outcome)) {
             throw new NotFoundException();
@@ -297,7 +304,7 @@ public final class MemoryTokenBroker implements TokenBroker {
     }
 
     @Override
-    public DeferredResponse postClarificationResponse(String pendingId, String agentId, String responseText) {
+    public PendingPollOutcome postClarificationResponse(String pendingId, String agentId, String responseText) {
         store.assertAgentOwnsPending(pendingId, agentId);
         PendingRecord record = store.getRecord(pendingId);
         if (record.clarificationRound >= MAX_CLARIFICATION_ROUNDS) {
@@ -311,6 +318,15 @@ public final class MemoryTokenBroker implements TokenBroker {
             mission.appendMissionLog(
                     ref.s256(),
                     new MissionLogEntry(Instant.now(), MissionLogKind.CLARIFICATION, Map.of("response", responseText)));
+        }
+        if (record.asPendingUrl != null) {
+            if (record.requirement != RequirementLevel.CLARIFICATION) {
+                throw new ProblemError(400, "invalid_request", "the access server has not asked a question");
+            }
+            if (!(asRelay.clarify(pendingId, responseText) instanceof PendingPollOutcome outcome)) {
+                throw new IllegalStateException("unexpected pending value after clarification");
+            }
+            return outcome;
         }
         store.updatePending(
                 pendingId, new PendingUpdate(PendingStatus.PENDING, RequirementLevel.INTERACTION, null, null, null));

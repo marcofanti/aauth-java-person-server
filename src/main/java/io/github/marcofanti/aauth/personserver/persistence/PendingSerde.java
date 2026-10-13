@@ -106,6 +106,7 @@ public final class PendingSerde {
         out.put("interaction_summary", record.interactionSummary);
         out.put("interaction_question", record.interactionQuestion);
         out.put("relay_url", record.relayUrl);
+        out.put("as_pending_url", record.asPendingUrl);
         out.put("relay_code", record.relayCode);
         out.put("mission_s256", record.missionS256);
         out.put("pending_agent_id", record.pendingAgentId);
@@ -218,6 +219,7 @@ public final class PendingSerde {
         record.interactionQuestion = stringOrNull(data.get("interaction_question"));
         record.relayUrl = stringOrNull(data.get("relay_url"));
         record.relayCode = stringOrNull(data.get("relay_code"));
+        record.asPendingUrl = stringOrNull(data.get("as_pending_url"));
         record.missionS256 = stringOrNull(data.get("mission_s256"));
         record.pendingAgentId = stringOrNull(data.get("pending_agent_id"));
         record.interactionDescription = stringOrNull(data.get("interaction_description"));

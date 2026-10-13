@@ -209,3 +209,7 @@ and the derived `aauth-java-person-server.pptx`.
 - **Egress DNS pinning** (2026-10-13): `EgressResolverProvider` pins each validated host to the
   addresses `Egress` checked, closing the DNS-rebinding window between the check and the
   connection. The server warns at startup if the provider is not loaded.
+- **AS interaction and clarification passed down** (2026-10-13): a four-party AS 202 other than
+  `claims` becomes the agent's pending (the AS's `url`/`code`, or its question). The PS polls
+  the AS when the agent polls and forwards clarification answers (§9.1.2). The Python reference
+  (draft-10) fakes federation, so there is no parity counterpart.

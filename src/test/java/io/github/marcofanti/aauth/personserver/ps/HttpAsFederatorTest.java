@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import io.github.marcofanti.aauth.personserver.Json;
+import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.FakeAccessServer.Answer;
 import io.github.marcofanti.aauth.personserver.web.ProblemError;
@@ -64,5 +65,44 @@ class HttpAsFederatorTest {
 
         assertThat(error.error()).isEqualTo(ProblemError.AS_UNREACHABLE);
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(5));
+    }
+
+    @Test
+    void anApprovalOutlastingTheDeadlineIsPassedDownNotFailed() {
+        as.answer(request -> new Answer(
+                202,
+                Map.of(
+                        "Location",
+                        "/pending/approval",
+                        "AAuth-Requirement",
+                        "requirement=approval",
+                        "Retry-After",
+                        "0"),
+                ""));
+
+        AsFederator.Federation result =
+                federator.federateDraft11(request(), Map.of("aud", as.origin(), "iss", "https://rs.example"));
+
+        assertThat(result).isInstanceOf(AsFederator.Federation.Deferred.class);
+        AsPending pending = ((AsFederator.Federation.Deferred) result).pending();
+        assertThat(pending.pendingUrl()).isEqualTo(as.origin() + "/pending/approval");
+        assertThat(pending.requirement()).isEqualTo(RequirementLevel.APPROVAL);
+        assertThat(as.received()).hasSizeGreaterThan(1);
+    }
+
+    @Test
+    void anInteractionUrlThatIsNotHttpsIsAsUnreachable() {
+        as.answer(request -> new Answer(
+                202,
+                Map.of(
+                        "Location", "/pending/i",
+                        "AAuth-Requirement", "requirement=interaction; url=\"http://as.example/i\"; code=\"AB12CD34\""),
+                ""));
+
+        ProblemError error = catchThrowableOfType(
+                ProblemError.class,
+                () -> federator.federateDraft11(request(), Map.of("aud", as.origin(), "iss", "https://rs.example")));
+
+        assertThat(error.error()).isEqualTo(ProblemError.AS_UNREACHABLE);
     }
 }

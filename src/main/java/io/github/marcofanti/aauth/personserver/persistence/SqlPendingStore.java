@@ -248,7 +248,10 @@ public final class SqlPendingStore implements PendingRequestStore {
     private DeferredResponse toDeferred(PendingRecord record) {
         String interactionUrl = null;
         String showCode = null;
-        if (record.requirement == RequirementLevel.INTERACTION) {
+        if (record.requirement == RequirementLevel.INTERACTION && record.asPendingUrl != null) {
+            interactionUrl = record.relayUrl;
+            showCode = record.relayCode;
+        } else if (record.requirement == RequirementLevel.INTERACTION) {
             interactionUrl = interactionBaseUrl + MemoryPendingStore.CONSENT_UI_PATH;
             showCode = record.interactionCode;
         }
@@ -419,7 +422,12 @@ public final class SqlPendingStore implements PendingRequestStore {
             row.put("requirement", record.requirement != null ? record.requirement.value() : null);
             row.put("agent_id", record.agentId() != null ? record.agentId() : "");
             row.put("owner_id", record.ownerId);
-            row.put("code", record.requirement == RequirementLevel.INTERACTION ? record.interactionCode : null);
+            // A request waiting on an AS has nothing for the person to approve here.
+            row.put(
+                    "code",
+                    record.requirement == RequirementLevel.INTERACTION && record.asPendingUrl == null
+                            ? record.interactionCode
+                            : null);
             row.put("interaction_url", interactionBaseUrl + MemoryPendingStore.CONSENT_UI_PATH);
             row.put("pending_url", pendingPath(record.pendingId));
             row.put("justification", record.tokenRequest != null ? record.tokenRequest.justification() : null);

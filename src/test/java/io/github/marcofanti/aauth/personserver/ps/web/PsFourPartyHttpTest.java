@@ -1,15 +1,19 @@
 package io.github.marcofanti.aauth.personserver.ps.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.model.AuthTokenResponse;
+import io.github.marcofanti.aauth.personserver.model.DeferredResponse;
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
 import io.github.marcofanti.aauth.personserver.model.UserDecision;
 import io.github.marcofanti.aauth.personserver.ps.FakeAccessServer;
 import io.github.marcofanti.aauth.personserver.ps.FakeAccessServer.Answer;
+import io.github.marcofanti.aauth.personserver.ps.NotFoundException;
 import io.github.marcofanti.aauth.personserver.ps.PendingDeniedException;
 import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PsContainer;
@@ -35,6 +39,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -386,5 +391,143 @@ class PsFourPartyHttpTest {
             assertProblem(requestAuthToken(personToken()), 502, ProblemError.AS_UNREACHABLE);
             assertThat(elsewhere.received()).isEmpty();
         }
+    }
+
+    private static final String INTERACTION = "requirement=interaction; url=\"%s/interact\"; code=\"AS12-CD34\"";
+
+    private static Answer interactionRequired() {
+        return new Answer(
+                202,
+                Map.of(
+                        "Location", "/pending/interaction",
+                        "AAuth-Requirement", INTERACTION.formatted(AS.origin()),
+                        "Retry-After", "0"),
+                "");
+    }
+
+    /** The agent's signed request to its PS pending URL ({@code body} null for a GET). */
+    private MvcResult onPending(String location, byte[] body) throws Exception {
+        String url = location.startsWith("/") ? PS_ORIGIN + location : location;
+        SignRequest.Builder signing = SignRequest.builder(body == null ? "GET" : "POST", url)
+                .keyPair(AGENT_KEY)
+                .scheme(new SignatureScheme.Jwt(agentToken()));
+        var request = body == null
+                ? get(url.replace(PS_ORIGIN, REQUEST_BASE))
+                : post(url.replace(PS_ORIGIN, REQUEST_BASE))
+                        .contentType(JSON_UTF8)
+                        .content(body);
+        Map<String, String> headers = body == null
+                ? RequestSigner.sign(
+                        signing.headers(Map.of("Host", "ps.example")).build())
+                : RequestSigner.sign(signing.headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
+                        .body(body)
+                        .additionalComponents(BODY_COMPONENTS)
+                        .build());
+        headers.forEach(request::header);
+        return mvc.perform(request).andReturn();
+    }
+
+    private static void waitOutTheAsPollInterval() throws InterruptedException {
+        Thread.sleep(1_100);
+    }
+
+    @Test
+    void anAccessServerInteractionIsPassedDownAndThePsFollowsItToTheToken() throws Exception {
+        AtomicBoolean personDone = new AtomicBoolean();
+        AS.answer(request -> {
+            if (request.path().equals("/auth-token") || !personDone.get()) {
+                return interactionRequired();
+            }
+            return Answer.json(
+                    200, Map.of("auth_token", AS.authToken(AS.received().getFirst(), Map.of())));
+        });
+
+        MvcResult deferred = requestAuthToken(personToken());
+
+        assertThat(deferred.getResponse().getStatus()).isEqualTo(202);
+        assertThat(deferred.getResponse().getHeader("AAuth-Requirement"))
+                .contains("requirement=interaction")
+                .contains(AS.origin() + "/interact")
+                .contains("AS12-CD34");
+        String location = deferred.getResponse().getHeader("Location");
+        assertThat(location).doesNotContain(AS.origin());
+
+        MvcResult stillWaiting = onPending(location, null);
+        assertThat(stillWaiting.getResponse().getStatus()).isEqualTo(202);
+        assertThat(stillWaiting.getResponse().getHeader("AAuth-Requirement")).contains("AS12-CD34");
+        FakeAccessServer.Received poll = AS.received().get(1);
+        assertThat(poll.method()).isEqualTo("GET");
+        assertThat(poll.path()).isEqualTo("/pending/interaction");
+        assertThat(signedByThePs(poll)).isTrue();
+
+        personDone.set(true);
+        waitOutTheAsPollInterval();
+        MvcResult done = onPending(location, null);
+        assertThat(done.getResponse().getStatus()).isEqualTo(200);
+        assertThat(Jwts.parse((String) json(done).get("auth_token")).claim("iss"))
+                .isEqualTo(AS.origin());
+    }
+
+    @Test
+    void anAccessServerQuestionIsPassedDownAndTheAgentsAnswerForwarded() throws Exception {
+        AS.answer(request -> request.path().equals("/auth-token")
+                ? new Answer(
+                        202,
+                        Map.of(
+                                "Location", "/pending/question",
+                                "AAuth-Requirement", "requirement=clarification",
+                                "Retry-After", "0",
+                                "Content-Type", "application/json"),
+                        Json.write(Map.of(
+                                "status", "pending",
+                                "clarification", "Which calendar?",
+                                "options", List.of("work", "home"))))
+                : Answer.json(
+                        200, Map.of("auth_token", AS.authToken(AS.received().getFirst(), Map.of()))));
+
+        MvcResult deferred = requestAuthToken(personToken());
+
+        assertThat(deferred.getResponse().getStatus()).isEqualTo(202);
+        assertThat(deferred.getResponse().getHeader("AAuth-Requirement")).contains("requirement=clarification");
+        assertThat(json(deferred)).containsEntry("clarification", "Which calendar?");
+        byte[] answer = Json.write(Map.of("clarification_response", "work")).getBytes(StandardCharsets.UTF_8);
+
+        MvcResult done = onPending(deferred.getResponse().getHeader("Location"), answer);
+
+        assertThat(done.getResponse().getStatus()).isEqualTo(200);
+        assertThat(json(done)).containsKey("auth_token");
+        FakeAccessServer.Received forwarded = AS.received().get(1);
+        assertThat(forwarded.method()).isEqualTo("POST");
+        assertThat(forwarded.path()).isEqualTo("/pending/question");
+        assertThat(forwarded.json()).containsEntry("clarification_response", "work");
+        assertThat(signedByThePs(forwarded)).isTrue();
+    }
+
+    @Test
+    void anAccessServerErrorWhileTheAgentWaitsEndsItsRequest() throws Exception {
+        AS.answer(request -> request.path().equals("/auth-token")
+                ? interactionRequired()
+                : Answer.json(403, Map.of("error", "denied")));
+        MvcResult deferred = requestAuthToken(personToken());
+
+        MvcResult ended = onPending(deferred.getResponse().getHeader("Location"), null);
+
+        assertThat(ended.getResponse().getStatus()).isEqualTo(403);
+        assertThat(json(ended)).containsEntry("error", "denied");
+    }
+
+    @Test
+    void afterConsentAnAccessServerInteractionIsPassedDownAndNoLongerTheConsentPages() throws Exception {
+        AS.answer(request -> interactionRequired());
+        MvcResult deferred = requestAuthToken(personToken(), "require:user");
+        String pendingId = (String) json(deferred).get("pending_id");
+
+        ps.userConsent().recordDecision(pendingId, new UserDecision(true));
+
+        DeferredResponse waiting = (DeferredResponse) ps.pendingStore().getPending(pendingId, false);
+        assertThat(waiting.interactionUrl()).isEqualTo(AS.origin() + "/interact");
+        assertThat(waiting.code()).isEqualTo("AS12-CD34");
+        assertThatThrownBy(() -> ps.userConsent().recordDecision(pendingId, new UserDecision(true)))
+                .isInstanceOf(NotFoundException.class);
     }
 }

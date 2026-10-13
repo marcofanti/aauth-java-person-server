@@ -2,6 +2,8 @@ package io.github.marcofanti.aauth.personserver.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.marcofanti.aauth.personserver.model.DeferredResponse;
+import io.github.marcofanti.aauth.personserver.model.RequirementLevel;
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
 import io.github.marcofanti.aauth.personserver.ps.ExpiredRecords;
 import io.github.marcofanti.aauth.personserver.ps.MemoryRevocationStore;
@@ -87,6 +89,25 @@ class SqlRevocationStoreTest {
         store.failPending(pendingId, "revoked");
         assertThat(store.openPending(open -> open.startedFor("https://rs.example", "rt-1")))
                 .isEmpty();
+    }
+
+    @Test
+    void sqlPendingWaitingOnAnAccessServerShowsTheAccessServersInteraction() {
+        SqlPendingStore store =
+                new SqlPendingStore(db.dataSource(), new SqlMissionState(db.dataSource()), "https://ps.example", 600);
+        String pendingId =
+                store.createPending(TokenRequest.builder("agent", "rt").build());
+        PendingRecord record = store.getRecord(pendingId);
+        record.asPendingUrl = "https://as.example/pending/1";
+        record.relayUrl = "https://as.example/interact";
+        record.relayCode = "AS12CD34";
+        record.requirement = RequirementLevel.INTERACTION;
+        store.saveRecord(record);
+
+        assertThat(store.getRecord(pendingId).asPendingUrl).isEqualTo("https://as.example/pending/1");
+        DeferredResponse deferred = (DeferredResponse) store.getPending(pendingId, false);
+        assertThat(deferred.interactionUrl()).isEqualTo("https://as.example/interact");
+        assertThat(deferred.code()).isEqualTo("AS12CD34");
     }
 
     @Test
