@@ -168,8 +168,10 @@ payment support). A relayed AS error on a deferred request reaches the agent as 
 
 Phase 7 (2026-10-12): the Agent Server records the agent tokens it mints and, when the person
 revokes a binding, revokes that agent's live tokens at the PS named in `ps` (signed
-`jwks_uri;dwk=aauth-agent.json`, in the background; records are in memory, so tokens minted
-before a restart live until `exp`). Uppercase agent locals: the Agent Server mints UUID locals
+`jwks_uri;dwk=aauth-agent.json`, in the background). The records live in
+`IssuedAgentTokenStore`: in memory by default, in `as_issued_agent_token` when
+`AAUTH_DATABASE_URL` is set, so in SQL mode tokens minted before a restart are still revoked
+(2026-10-13). Expired records are purged on each new record. Uppercase agent locals: the Agent Server mints UUID locals
 and validates none (`AgentIds.isValidAgentId` has no callers), so nothing changes there. Python
 interop rerun and `demo/demo.sh` pass on this branch. Left for the user:
 `aauth-full-java-demo` acceptance on draft-11 (that repo has uncommitted work), and the

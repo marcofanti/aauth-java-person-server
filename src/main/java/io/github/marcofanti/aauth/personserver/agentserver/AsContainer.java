@@ -12,9 +12,11 @@ public record AsContainer(
         AgentTokenRevocation tokenRevocation) {
 
     /** Revocation of this provider's agent tokens, signed as the provider ({@code aauth-agent.json}). */
-    public static AgentTokenRevocation tokenRevocation(String issuer, AsSigningService signing) {
+    public static AgentTokenRevocation tokenRevocation(
+            String issuer, AsSigningService signing, IssuedAgentTokenStore issued) {
         return new AgentTokenRevocation(
-                new RevocationSender(new ServerHttp(issuer, "aauth-agent.json", signing.keyPair(), signing.kid())));
+                new RevocationSender(new ServerHttp(issuer, "aauth-agent.json", signing.keyPair(), signing.kid())),
+                issued);
     }
 
     /** {@code build_memory_as} in Python. */
@@ -40,6 +42,6 @@ public record AsContainer(
                 new MemoryBindingStore(),
                 new ReplayCache(options.signatureWindow()),
                 signing,
-                tokenRevocation(options.issuer(), signing));
+                tokenRevocation(options.issuer(), signing, new MemoryIssuedAgentTokenStore()));
     }
 }

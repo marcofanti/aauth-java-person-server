@@ -4,6 +4,7 @@ import io.github.marcofanti.aauth.personserver.Json;
 import io.github.marcofanti.aauth.personserver.agentserver.BindingNotFoundException;
 import io.github.marcofanti.aauth.personserver.agentserver.BindingStore;
 import io.github.marcofanti.aauth.personserver.agentserver.DuplicateStableKeyException;
+import io.github.marcofanti.aauth.personserver.agentserver.IssuedAgentTokenStore;
 import io.github.marcofanti.aauth.personserver.agentserver.MemoryPendingRegistrationStore;
 import io.github.marcofanti.aauth.personserver.agentserver.PendingRegistrationStore;
 import io.github.marcofanti.aauth.personserver.agentserver.RegistrationNotFoundException;
@@ -243,6 +244,42 @@ public final class SqlAgentServerStores {
             if (updated == 0) {
                 throw new BindingNotFoundException();
             }
+        }
+    }
+
+    /** SQL {@link IssuedAgentTokenStore} ({@code as_issued_agent_token}). */
+    public static final class IssuedAgentTokens implements IssuedAgentTokenStore {
+
+        private final JdbcTemplate jdbc;
+
+        public IssuedAgentTokens(DataSource dataSource) {
+            this.jdbc = new JdbcTemplate(dataSource);
+        }
+
+        @Override
+        public void record(Issued issued) {
+            jdbc.update(
+                    "INSERT INTO as_issued_agent_token (jti, agent_id, ps, exp) VALUES (?, ?, ?, ?) "
+                            + "ON CONFLICT DO NOTHING",
+                    issued.jti(),
+                    issued.agentId(),
+                    issued.ps(),
+                    issued.exp());
+        }
+
+        @Override
+        public List<Issued> liveFor(String agentId, long nowEpochSeconds) {
+            return jdbc.query(
+                    "SELECT jti, agent_id, ps, exp FROM as_issued_agent_token WHERE agent_id = ? AND exp > ?",
+                    (rs, rowNum) -> new Issued(
+                            rs.getString("jti"), rs.getString("agent_id"), rs.getString("ps"), rs.getLong("exp")),
+                    agentId,
+                    nowEpochSeconds);
+        }
+
+        @Override
+        public void purgeExpired(long nowEpochSeconds) {
+            jdbc.update("DELETE FROM as_issued_agent_token WHERE exp <= ?", nowEpochSeconds);
         }
     }
 }
