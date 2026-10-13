@@ -20,7 +20,10 @@ SLIDES_DIR = Path(__file__).resolve().parent
 SOURCE = SLIDES_DIR / "slides.html"
 OUTPUT = SLIDES_DIR / "aauth-java-person-server.pptx"
 SLIDE_START = re.compile(r'<div class="slide(?: [^"]*)?"')
-SHOW_ONE = "body{margin:0;background:#f6f7f9} .slide{display:none;margin:0!important} .slide[data-show]{display:block}\n"
+SHOW_ONE = (
+    "body{margin:0;background:#f6f7f9} "
+    ".slide{display:none;margin:0!important} .slide[data-show]{display:block}\n"
+)
 
 
 def render(work: Path) -> list[Path]:
