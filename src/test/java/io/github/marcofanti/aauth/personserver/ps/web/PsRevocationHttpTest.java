@@ -46,6 +46,8 @@ class PsRevocationHttpTest {
     // MockMvc rewrites a bare application/json to this; sign the value it actually sends.
     private static final String JSON_UTF8 = "application/json;charset=UTF-8";
     private static final String AGENT_ID = "aauth:planner.7f3c@agent-server.example";
+    // The portal's co-located Agent Server on its own origin (AAUTH_AS_PUBLIC_ORIGIN).
+    private static final String SELF_AS = "https://as.example";
 
     private static final KeyPair AGENT_KEY = KeyPairs.generateEd25519();
     private static final KeyPair AS_KEY = KeyPairs.generateEd25519();
@@ -91,6 +93,7 @@ class PsRevocationHttpTest {
                     .trustFile(null)
                     .consentScopesFile(null)
                     .selfJwksProvider(() -> jwks(AS_KEY, "as-kid"))
+                    .selfAgentIssuer(SELF_AS)
                     .resourceJwks(
                             iss -> RESOURCE.origin().equals(iss.replaceAll("/+$", "")) ? jwks(RS_KEY, "rs-kid") : null)
                     .build());
@@ -406,5 +409,18 @@ class PsRevocationHttpTest {
                 RS_KEY,
                 new SignatureScheme.JwksUri(RESOURCE.origin(), "aauth-resource.json", "rs-kid"));
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void theCoLocatedAgentServerOnItsOwnOriginMayRevoke() throws Exception {
+        MvcResult result = send(
+                "/revoke",
+                revocation("agent-jti-self-as"),
+                AS_KEY,
+                new SignatureScheme.JwksUri(SELF_AS, "aauth-agent.json", "as-kid"),
+                BODY_COMPONENTS);
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        assertThat(ps.revocations().isRevoked(SELF_AS, "agent-jti-self-as")).isTrue();
     }
 }
