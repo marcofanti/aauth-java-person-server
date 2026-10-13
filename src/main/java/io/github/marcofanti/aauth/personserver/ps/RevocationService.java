@@ -20,8 +20,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The PS revocation endpoint's behavior (§11.12): record the {@code (iss, jti)} the verified
- * caller revoked, then run the cascade it implies and return once every downstream revocation
- * is terminal.
+ * caller revoked, then run the cascade it implies; the returned future completes once every
+ * downstream revocation is terminal.
  *
  * <p>Agent providers revoke agent tokens; the PS then revokes, at their resources, every person
  * token and auth token it issued to that agent's {@code sub} (§11.12.4). Resources revoke
@@ -62,9 +62,9 @@ public final class RevocationService {
     private static final int MAX_PER_WINDOW = 100;
     private static final long WINDOW_SECONDS = 60;
     private static final int MAX_TRACKED_ISSUERS = 1_000;
-    // Each downstream call is bounded by its own HTTP timeouts; this caps the whole cascade near
-    // the ~20 s a caller is expected to hold (§11.12.3).
-    private static final Duration CASCADE_TIMEOUT = Duration.ofSeconds(20);
+    // Each downstream call is bounded by its HTTP timeouts and, when deferred, by the sender's
+    // poll deadline; this caps the whole cascade. Callers past the endpoint's hold get a 202.
+    private static final Duration CASCADE_TIMEOUT = RevocationSender.POLL_DEADLINE.plusSeconds(15);
     private static final ExecutorService DOWNSTREAM = Executors.newVirtualThreadPerTaskExecutor();
 
     private record Window(long start, int count) {}
@@ -79,11 +79,21 @@ public final class RevocationService {
     }
 
     /**
-     * Revoke {@code jti} in the namespace of {@code iss} and run its cascade.
+     * Revoke {@code jti} in the namespace of {@code iss} and wait for its cascade.
      *
      * @return the downstream revocations made, each terminal; empty when nothing cascades
      */
     public List<Downstream> revoke(String iss, CallerKind kind, String jti, long exp) {
+        return start(iss, kind, jti, exp).join();
+    }
+
+    /**
+     * Record the revocation of {@code jti} in the namespace of {@code iss} and start its
+     * cascade. Validation, rate limiting and every local record happen before this returns.
+     *
+     * @return the downstream revocations, each terminal; already complete when nothing cascades
+     */
+    public CompletableFuture<List<Downstream>> start(String iss, CallerKind kind, String jti, long exp) {
         long now = Instant.now().getEpochSecond();
         if (exp > now + MAX_TOKEN_LIFETIME_SECONDS) {
             throw new ProblemError(400, "invalid_request", "exp is further ahead than any token this PS accepts");
@@ -94,11 +104,11 @@ public final class RevocationService {
             for (String pendingId : deps.pending().openPending(record -> record.startedFor(iss, jti))) {
                 deps.pending().failPending(pendingId, "revoked");
             }
-            return List.of();
+            return CompletableFuture.completedFuture(List.of());
         }
         String sub = deps.revocations().agentSub(iss, jti);
         if (sub == null) {
-            return List.of();
+            return CompletableFuture.completedFuture(List.of());
         }
         deps.revocations().recordAgentRevocation(sub, now);
         return cascade(sub, now);
@@ -122,7 +132,7 @@ public final class RevocationService {
     private record Target(String recipient, String metadata, Token token) {}
 
     /** §11.12.4: revoke every live person and auth token issued to the agent, wherever it went. */
-    private List<Downstream> cascade(String agentSub, long now) {
+    private CompletableFuture<List<Downstream>> cascade(String agentSub, long now) {
         List<Target> targets = new ArrayList<>();
         // Revoked jtis whose derived person tokens (issued with them as upstream_token) follow.
         Deque<String> upstreams = new ArrayDeque<>();
@@ -181,18 +191,20 @@ public final class RevocationService {
                             CASCADE_TIMEOUT.toSeconds(),
                             TimeUnit.SECONDS));
         }
-        List<Downstream> outcomes = new ArrayList<>();
-        for (CompletableFuture<Downstream> call : calls) {
-            Downstream outcome = call.join();
-            log.info(
-                    "revocation cascade for {}: {} at {} -> {}",
-                    agentSub,
-                    outcome.jti(),
-                    outcome.recipient(),
-                    outcome.outcome());
-            outcomes.add(outcome);
-        }
-        return outcomes;
+        return CompletableFuture.allOf(calls.toArray(CompletableFuture[]::new)).thenApply(done -> {
+            List<Downstream> outcomes = new ArrayList<>();
+            for (CompletableFuture<Downstream> call : calls) {
+                Downstream outcome = call.join();
+                log.info(
+                        "revocation cascade for {}: {} at {} -> {}",
+                        agentSub,
+                        outcome.jti(),
+                        outcome.recipient(),
+                        outcome.outcome());
+                outcomes.add(outcome);
+            }
+            return outcomes;
+        });
     }
 
     private static Target liveAuthToken(Map<String, Object> row, String agentSub, long now) {

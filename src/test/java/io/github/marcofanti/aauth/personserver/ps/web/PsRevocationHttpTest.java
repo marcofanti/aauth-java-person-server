@@ -18,6 +18,7 @@ import io.github.marcofanti.aauth.signing.keys.KeyPairs;
 import io.github.marcofanti.aauth.tokens.AgentTokens;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,6 +52,8 @@ class PsRevocationHttpTest {
     private static final KeyPair RS_KEY = KeyPairs.generateEd25519();
     private static final KeyPair STRANGER_KEY = KeyPairs.generateEd25519();
     private static final FakeRevocationResource RESOURCE = new FakeRevocationResource();
+    private static final FakeRevocationResource SLOW_RESOURCE =
+            new FakeRevocationResource().delaying(Duration.ofMillis(1500));
 
     private static Map<String, Object> jwks(KeyPair keyPair, String kid) {
         return Map.of("keys", List.of(Jwk.publicKeyToJwk(keyPair.getPublic(), kid)));
@@ -97,6 +100,7 @@ class PsRevocationHttpTest {
     @AfterAll
     static void stopResource() {
         RESOURCE.close();
+        SLOW_RESOURCE.close();
     }
 
     @Autowired
@@ -154,6 +158,38 @@ class PsRevocationHttpTest {
                 AS_KEY,
                 new SignatureScheme.JwksUri(PS_ORIGIN, "aauth-agent.json", "as-kid"),
                 BODY_COMPONENTS);
+    }
+
+    private static final SignatureScheme AS_IDENTITY =
+            new SignatureScheme.JwksUri(PS_ORIGIN, "aauth-agent.json", "as-kid");
+
+    /** An agent-provider revocation that asks the PS not to hold ({@code Prefer: wait=0}). */
+    private MvcResult revokeWithoutWaiting(byte[] body, KeyPair key, SignatureScheme scheme) throws Exception {
+        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("POST", PS_ORIGIN + "/revoke")
+                .headers(Map.of("Host", "ps.example", "Content-Type", JSON_UTF8))
+                .body(body)
+                .keyPair(key)
+                .scheme(scheme)
+                .additionalComponents(BODY_COMPONENTS)
+                .build());
+        MockHttpServletRequestBuilder request = post(REQUEST_BASE + "/revoke")
+                .contentType(JSON_UTF8)
+                .content(body)
+                .header("Prefer", "wait=0");
+        headers.forEach(request::header);
+        return mvc.perform(request).andReturn();
+    }
+
+    private MvcResult poll(String location, KeyPair key, SignatureScheme scheme) throws Exception {
+        Map<String, String> headers = RequestSigner.sign(SignRequest.builder("GET", location)
+                .headers(Map.of("Host", "ps.example"))
+                .keyPair(key)
+                .scheme(scheme)
+                .build());
+        MockHttpServletRequestBuilder request =
+                get(location.replace(PS_ORIGIN, REQUEST_BASE)).header("Prefer", "wait=20");
+        headers.forEach(request::header);
+        return mvc.perform(request).andReturn();
     }
 
     private MvcResult revokeAsResource(byte[] body, KeyPair key) throws Exception {
@@ -324,5 +360,51 @@ class PsRevocationHttpTest {
                 new SignatureScheme.JwksUri("https://internal.example", "aauth-resource.json", "rs-kid"),
                 BODY_COMPONENTS);
         assertProblem(result, 403, "unsupported_iss");
+    }
+
+    @Test
+    void aCascadeOutlastingTheHoldIsDeferredAndOnlyItsCallerMayPoll() throws Exception {
+        String agentId = "aauth:deferred@agent-server.example";
+        ps.revocations().recordAgentToken(PS_ORIGIN, "agent-jti-deferred", agentId, inOneHour());
+        ps.personTokenLedger()
+                .recordIssued(new PersonTokenLedger.Issued(
+                        "pt-deferred", agentId, "user", SLOW_RESOURCE.origin(), "sub", inOneHour()));
+
+        MvcResult accepted = revokeWithoutWaiting(revocation("agent-jti-deferred"), AS_KEY, AS_IDENTITY);
+
+        assertThat(accepted.getResponse().getStatus()).isEqualTo(202);
+        assertThat(accepted.getResponse().getHeader("Retry-After")).isEqualTo("0");
+        assertThat(accepted.getResponse().getHeader("Cache-Control")).isEqualTo("no-store");
+        assertThat(json(accepted)).containsEntry("status", "pending");
+        String location = accepted.getResponse().getHeader("Location");
+        assertThat(location).startsWith(PS_ORIGIN + "/revoke/pending/");
+
+        SignatureScheme resourceIdentity =
+                new SignatureScheme.JwksUri(RESOURCE.origin(), "aauth-resource.json", "rs-kid");
+        assertThat(poll(location, RS_KEY, resourceIdentity).getResponse().getStatus())
+                .isEqualTo(404);
+
+        MvcResult done = poll(location, AS_KEY, AS_IDENTITY);
+        assertThat(done.getResponse().getStatus()).isEqualTo(200);
+        assertThat(done.getResponse().getContentAsByteArray()).isEmpty();
+        assertThat(SLOW_RESOURCE.received())
+                .anySatisfy(received -> assertThat(received.json()).containsEntry("jti", "pt-deferred"));
+        assertThat(poll(location, AS_KEY, AS_IDENTITY).getResponse().getStatus())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void anUnknownPendingRevocationIsNotFound() throws Exception {
+        MvcResult result = poll(PS_ORIGIN + "/revoke/pending/nope", AS_KEY, AS_IDENTITY);
+        assertThat(result.getResponse().getStatus()).isEqualTo(404);
+    }
+
+    @Test
+    void aRevocationWithNothingDownstreamNeverAnswers202() throws Exception {
+        MvcResult result = revokeWithoutWaiting(
+                revocation("rt-no-wait"),
+                RS_KEY,
+                new SignatureScheme.JwksUri(RESOURCE.origin(), "aauth-resource.json", "rs-kid"));
+        assertThat(result.getResponse().getStatus()).isEqualTo(200);
     }
 }

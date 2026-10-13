@@ -18,9 +18,20 @@ import io.github.marcofanti.aauth.signing.SignatureVerifier;
 import io.github.marcofanti.aauth.signing.VerifyRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +41,10 @@ import org.springframework.web.bind.annotation.RestController;
  * {@code jwks_uri} scheme, and the verified identity is the issuer whose {@code jti} is revoked.
  * Agent providers (trusted, {@code dwk=aauth-agent.json}) revoke agent tokens; resources
  * ({@code dwk=aauth-resource.json}) revoke resource tokens.
+ *
+ * <p>The endpoint holds until the cascade is terminal, for at most {@link #MAX_HOLD} or the
+ * caller's {@code Prefer: wait}, then answers 202 with a pending URL that the same identity polls
+ * with a signed GET (§11.12.3 deferred completion).
  */
 @Profile({"default", "portal", "ps"})
 @RestController
@@ -39,8 +54,14 @@ public class PsRevocationController {
     private static final String AGENT_DWK = "aauth-agent.json";
     private static final String RESOURCE_DWK = "aauth-resource.json";
 
+    private static final Duration MAX_HOLD = Duration.ofSeconds(20);
+    private static final Pattern PREFER_WAIT = Pattern.compile("(?:^|[,;\\s])wait=(\\d+)");
+    private static final String PENDING_PATH = "/revoke/pending/";
+    private static final Logger log = LoggerFactory.getLogger(PsRevocationController.class);
+
     private record Caller(String iss, CallerKind kind) {}
 
+    private final PendingRevocations pending = new PendingRevocations();
     private final PsContainer ps;
     private final String psOrigin;
     private final RevocationService service;
@@ -60,7 +81,7 @@ public class PsRevocationController {
     }
 
     @PostMapping("/revoke")
-    public ResponseEntity<Void> revoke(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
+    public ResponseEntity<Object> revoke(HttpServletRequest request, @RequestBody(required = false) byte[] raw) {
         SignedRequest signed = RequestExtract.signedRequest(request, raw);
         Caller caller = verifyCaller(signed);
         BodyCoverage.require(signed);
@@ -73,8 +94,64 @@ public class PsRevocationController {
         if (jti == null || exp == null) {
             throw new ProblemError(400, "invalid_request", "jti (string) and exp (positive integer) are required");
         }
-        service.revoke(caller.iss(), caller.kind(), jti, exp);
+        CompletableFuture<?> cascade = service.start(caller.iss(), caller.kind(), jti, exp);
+        if (awaitCascade(cascade, hold(request))) {
+            return ResponseEntity.ok().build();
+        }
+        return deferred(pending.add(caller, cascade));
+    }
+
+    /** §11.12.3: the poller signs as the identity that made the revocation; anyone else gets 404. */
+    @GetMapping(PENDING_PATH + "{id}")
+    public ResponseEntity<Object> poll(HttpServletRequest request, @PathVariable("id") String id) {
+        Caller caller = verifyCaller(RequestExtract.signedRequest(request, null));
+        CompletableFuture<?> cascade = pending.find(id, caller);
+        if (cascade == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!awaitCascade(cascade, hold(request))) {
+            return deferred(id);
+        }
+        pending.remove(id);
         return ResponseEntity.ok().build();
+    }
+
+    private static Duration hold(HttpServletRequest request) {
+        String prefer = request.getHeader("Prefer");
+        Matcher wait = prefer == null ? null : PREFER_WAIT.matcher(prefer);
+        if (wait == null || !wait.find()) {
+            return MAX_HOLD;
+        }
+        try {
+            Duration asked = Duration.ofSeconds(Long.parseLong(wait.group(1)));
+            return asked.compareTo(MAX_HOLD) < 0 ? asked : MAX_HOLD;
+        } catch (NumberFormatException e) {
+            return MAX_HOLD;
+        }
+    }
+
+    /** Whether the cascade finished within {@code hold}. */
+    private static boolean awaitCascade(CompletableFuture<?> cascade, Duration hold) {
+        try {
+            cascade.get(hold.toMillis(), TimeUnit.MILLISECONDS);
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException e) {
+            log.warn("revocation cascade failed", e.getCause());
+            throw new ProblemError(500, "server_error", "the revocation cascade failed");
+        }
+    }
+
+    private ResponseEntity<Object> deferred(String id) {
+        return ResponseEntity.accepted()
+                .header("Location", psOrigin + PENDING_PATH + id)
+                .header("Retry-After", "0")
+                .header("Cache-Control", "no-store")
+                .body(Map.of("status", "pending"));
     }
 
     private Caller verifyCaller(SignedRequest signed) {

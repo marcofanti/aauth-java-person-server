@@ -2,9 +2,13 @@ package io.github.marcofanti.aauth.personserver.ps;
 
 import io.github.marcofanti.aauth.personserver.Json;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,6 +16,8 @@ import org.slf4j.LoggerFactory;
  * Outbound revocation (§11.12.1, PS-113): the PS signs as a server and posts {@code {jti, exp}}
  * to the recipient's {@code revocation_endpoint}, discovered from its metadata. An AS's 200 may
  * carry a {@code downstream} array (PS-114), which is logged; the PS reports nothing upstream.
+ * A 202 is followed to its terminal response by polling the pending URL with a signed GET
+ * (§11.12.3 deferred completion), for at most {@link #POLL_DEADLINE}.
  */
 public final class RevocationSender {
 
@@ -28,6 +34,12 @@ public final class RevocationSender {
     public static final String PERSON_METADATA = "aauth-person.json";
     /** Metadata document of an AS, which revokes person tokens the PS presented to it. */
     public static final String ACCESS_METADATA = "aauth-access.json";
+
+    /** How long a deferred downstream revocation is polled before it counts as unavailable. */
+    public static final Duration POLL_DEADLINE = Duration.ofSeconds(45);
+
+    private static final long DEFAULT_RETRY_AFTER_SECONDS = 5;
+    private static final long SLOW_DOWN_SECONDS = 5;
 
     private static final Logger log = LoggerFactory.getLogger(RevocationSender.class);
 
@@ -53,13 +65,68 @@ public final class RevocationSender {
             return Outcome.REVOCATION_UNSUPPORTED;
         }
         try {
-            return outcome(http.post(endpoint, Map.of("jti", jti, "exp", exp)));
+            return outcome(awaitTerminal(endpoint, http.post(endpoint, Map.of("jti", jti, "exp", exp))));
         } catch (IOException | IllegalArgumentException e) {
             log.info("revocation at {} failed: {}", endpoint, e.getMessage());
             return Outcome.REVOCATION_UNAVAILABLE;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Outcome.REVOCATION_UNAVAILABLE;
+        }
+    }
+
+    /**
+     * §11.8.3 polling: follow 202s to the pending URL (which must stay on the endpoint's origin),
+     * respecting {@code Retry-After} and slowing down by 5 seconds on each 429.
+     *
+     * @throws IllegalArgumentException when the 202 has no usable {@code Location} or the
+     *     deadline passes first
+     */
+    private HttpResponse<String> awaitTerminal(String endpoint, HttpResponse<String> response)
+            throws IOException, InterruptedException {
+        Instant giveUpAt = Instant.now().plus(POLL_DEADLINE);
+        URI pending = null;
+        long slowDown = 0;
+        while (response.statusCode() == 202 || (pending != null && response.statusCode() == 429)) {
+            if (response.statusCode() == 202) {
+                pending = pendingUrl(endpoint, response);
+            } else {
+                slowDown += SLOW_DOWN_SECONDS;
+            }
+            long wait = retryAfter(response) + slowDown;
+            if (Instant.now().plusSeconds(wait).isAfter(giveUpAt)) {
+                throw new IllegalArgumentException("deferred revocation at " + endpoint + " did not finish within "
+                        + POLL_DEADLINE.toSeconds() + " seconds");
+            }
+            Thread.sleep(Duration.ofSeconds(wait));
+            response = http.get(pending.toString());
+        }
+        return response;
+    }
+
+    private static URI pendingUrl(String endpoint, HttpResponse<String> response) {
+        String location = response.headers()
+                .firstValue("Location")
+                .orElseThrow(() -> new IllegalArgumentException(endpoint + " answered 202 without a Location"));
+        URI base = URI.create(endpoint);
+        URI pending = base.resolve(location);
+        if (!Objects.equals(pending.getScheme(), base.getScheme())
+                || !Objects.equals(pending.getHost(), base.getHost())
+                || pending.getPort() != base.getPort()) {
+            throw new IllegalArgumentException("pending URL " + pending + " is not on the origin of " + endpoint);
+        }
+        return pending;
+    }
+
+    private static long retryAfter(HttpResponse<String> response) {
+        String value = response.headers().firstValue("Retry-After").orElse(null);
+        if (value == null) {
+            return DEFAULT_RETRY_AFTER_SECONDS;
+        }
+        try {
+            return Math.max(0, Long.parseLong(value.strip()));
+        } catch (NumberFormatException e) {
+            return DEFAULT_RETRY_AFTER_SECONDS;
         }
     }
 

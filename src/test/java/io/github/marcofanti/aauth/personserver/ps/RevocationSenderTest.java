@@ -107,4 +107,40 @@ class RevocationSenderTest {
         Map<String, String> headers = resource.received().getFirst().headers();
         assertThat(headers.get("content-digest")).startsWith("sha-256=");
     }
+
+    @Test
+    void aDeferredRevocationIsPolledWithASignedGetUntilTerminal() {
+        resource.deferringTo("/revoke/pending/p-1");
+
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOKED);
+
+        FakeRevocationResource.Received poll = resource.polls().getFirst();
+        assertThat(poll.uri()).isEqualTo(resource.origin() + "/revoke/pending/p-1");
+        assertThat(poll.body()).isEmpty();
+        assertThat(SignatureVerifier.verify(VerifyRequest.builder("GET", poll.uri())
+                        .headers(poll.headers())
+                        .signatureHeaders(
+                                poll.headers().get("signature-input"),
+                                poll.headers().get("signature"),
+                                poll.headers().get("signature-key"))
+                        .jwksFetcher((id, dwk, kid) -> PS_ORIGIN.equals(id) ? signing.getJwks() : null)
+                        .build()))
+                .isTrue();
+    }
+
+    @Test
+    void aDeferredRevocationEndsWithThePollsTerminalOutcome() {
+        resource.deferringTo("/revoke/pending/p-1").answering(403, "{\"error\":\"unsupported_iss\"}");
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNSUPPORTED);
+    }
+
+    @Test
+    void aPendingUrlOffTheRecipientsOriginIsUnavailableAndNotPolled() {
+        resource.deferringTo("https://elsewhere.example/pending/p-1");
+        assertThat(sender.send(resource.origin(), RevocationSender.RESOURCE_METADATA, "pt-1", 1L))
+                .isEqualTo(Outcome.REVOCATION_UNAVAILABLE);
+        assertThat(resource.polls()).isEmpty();
+    }
 }
