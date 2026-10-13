@@ -36,6 +36,8 @@ jobs:
       # Draft-11 identifiers are HTTPS origins without a port: the demo runs behind Caddy on
       # :443 as https://ps.uma.lab with an mkcert certificate (see README, "Local HTTPS").
       - name: Install Caddy and mkcert (pinned, checksum-verified)
+        # Work in the runner's temp dir: the repo's own caddy/ directory would block extraction.
+        working-directory: ${{ runner.temp }}
         run: |
           curl -fsSL -o caddy.tar.gz \
             "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
