@@ -168,9 +168,10 @@ public final class PersonTokenService {
         // §10.2.1 by the library: single-level parent, shared issuer, the sub-agent's own key.
         Map<String, Object> claims;
         try {
-            claims =
-                    Delegation.verifySubagentToken(agent.agentToken(), subagentToken, (id, dwk, kid) -> deps.agentJwks()
-                            .apply(id));
+            claims = Delegation.verifySubagentToken(
+                    agent.agentToken(),
+                    subagentToken,
+                    (id, dwk, kid) -> deps.agentJwks().apply(id));
         } catch (TokenException e) {
             String code = String.valueOf(e.errorCode());
             String problem = code.contains("expired")
