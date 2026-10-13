@@ -155,7 +155,7 @@ deferral is a MAY; draft-10 deferral is not agent-pollable either). New setting:
 Revocation (2026-10-12): the PS answers synchronously. Downstream calls run in parallel with
 5-second timeouts, so the cascade finishes inside the ~20 s hold §11.12.3 suggests, and the
 PS never answers 202. A downstream 202 counts as `revocation_unavailable` (the PS does not poll
-it); a repeated revocation retries. Records are not purged after `exp` (discarding is a MAY).
+it); a repeated revocation retries. Records are purged after `exp` (see "Record expiry").
 Fixed alongside: `SqlPendingStore.getRecord` returns a fresh copy, so the broker's in-place writes
 (`verifiedResourceClaims`, `tokenAgentCnfJwk`, `evaluatorReason`, clarification rounds) were lost
 in SQL mode (the Python reference has the same pattern). `PendingRequestStore.saveRecord` now
@@ -171,7 +171,7 @@ revokes a binding, revokes that agent's live tokens at the PS named in `ps` (sig
 `jwks_uri;dwk=aauth-agent.json`, in the background). The records live in
 `IssuedAgentTokenStore`: in memory by default, in `as_issued_agent_token` when
 `AAUTH_DATABASE_URL` is set, so in SQL mode tokens minted before a restart are still revoked
-(2026-10-13). Expired records are purged on each new record. Uppercase agent locals: the Agent Server mints UUID locals
+(2026-10-13). Expired records are purged as described under "Record expiry" below. Uppercase agent locals: the Agent Server mints UUID locals
 and validates none (`AgentIds.isValidAgentId` has no callers), so nothing changes there. Python
 interop rerun and `demo/demo.sh` pass on this branch. Left for the user:
 `aauth-full-java-demo` acceptance on draft-11 (that repo has uncommitted work), and the
@@ -229,3 +229,11 @@ PR aauth-java-library#26), which follows the Python 0.5.0 reference and is fully
 - **Consequence:** the Python reference's signed draft-10 scripts (Python `aauth` 0.3.0,
   `alg: EdDSA`) are refused; see the README interop table. Accepting them would mean verifying
   `EdDSA`-labelled JWTs outside the library, which this repo's rules forbid.
+
+Record expiry (2026-10-13): revocations (`ps_revocation`), accepted agent tokens
+(`ps_agent_token`), issued person tokens (`ps_person_token`, with their presentation and upstream
+rows) and the Agent Server's issued agent tokens (`as_issued_agent_token`) are dropped once their
+`exp` is more than 5 minutes past (`ExpiredRecords.GRACE_SECONDS`, so a token still accepted
+within the clock-skew window stays revocable). Each store purges on a write, at most once a
+minute; there is no background thread. `ps_agent_revocation` keeps one row per agent and is not
+purged.

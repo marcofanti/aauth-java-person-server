@@ -1,5 +1,6 @@
 package io.github.marcofanti.aauth.personserver.persistence;
 
+import io.github.marcofanti.aauth.personserver.ps.ExpiredRecords;
 import io.github.marcofanti.aauth.personserver.ps.MissionUtils;
 import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import java.util.List;
@@ -10,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class SqlPersonTokenLedger implements PersonTokenLedger {
 
     private final JdbcTemplate jdbc;
+    private final ExpiredRecords expired = new ExpiredRecords();
 
     public SqlPersonTokenLedger(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(dataSource);
@@ -45,6 +47,10 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
                 issued.aud(),
                 issued.sub(),
                 issued.exp());
+        long cutoff = expired.cutoffIfDue();
+        if (cutoff >= 0) {
+            purgeExpired(cutoff);
+        }
     }
 
     @Override
@@ -129,5 +135,13 @@ public final class SqlPersonTokenLedger implements PersonTokenLedger {
                 nowEpochSeconds,
                 MissionUtils.stripTrailingSlash(exclude));
         return count == null ? 0 : count;
+    }
+
+    @Override
+    public void purgeExpired(long cutoffEpochSeconds) {
+        String expiredJtis = "SELECT jti FROM ps_person_token WHERE exp <= ?";
+        jdbc.update("DELETE FROM ps_person_token_presentation WHERE jti IN (" + expiredJtis + ")", cutoffEpochSeconds);
+        jdbc.update("DELETE FROM ps_person_token_upstream WHERE jti IN (" + expiredJtis + ")", cutoffEpochSeconds);
+        jdbc.update("DELETE FROM ps_person_token WHERE exp <= ?", cutoffEpochSeconds);
     }
 }

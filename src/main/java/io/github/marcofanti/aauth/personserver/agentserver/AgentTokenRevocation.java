@@ -1,5 +1,6 @@
 package io.github.marcofanti.aauth.personserver.agentserver;
 
+import io.github.marcofanti.aauth.personserver.ps.ExpiredRecords;
 import io.github.marcofanti.aauth.personserver.ps.RevocationSender;
 import io.github.marcofanti.aauth.personserver.ps.RevocationSender.Outcome;
 import io.github.marcofanti.aauth.signing.Jwts;
@@ -26,6 +27,7 @@ public final class AgentTokenRevocation {
 
     private final RevocationSender sender;
     private final IssuedAgentTokenStore issued;
+    private final ExpiredRecords expired = new ExpiredRecords();
 
     public AgentTokenRevocation(RevocationSender sender, IssuedAgentTokenStore issued) {
         this.sender = sender;
@@ -39,7 +41,10 @@ public final class AgentTokenRevocation {
         String ps = token.claim("ps");
         Long exp = token.numericClaim("exp");
         if (jti != null && ps != null && exp != null) {
-            issued.purgeExpired(Instant.now().getEpochSecond());
+            long cutoff = expired.cutoffIfDue();
+            if (cutoff >= 0) {
+                issued.purgeExpired(cutoff);
+            }
             issued.record(new IssuedAgentTokenStore.Issued(jti, token.claim("sub"), ps, exp));
         }
     }

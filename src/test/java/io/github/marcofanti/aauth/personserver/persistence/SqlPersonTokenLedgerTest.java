@@ -3,10 +3,12 @@ package io.github.marcofanti.aauth.personserver.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.marcofanti.aauth.personserver.model.PersonTokenRequest;
+import io.github.marcofanti.aauth.personserver.ps.MemoryPersonTokenLedger;
 import io.github.marcofanti.aauth.personserver.ps.PendingRecord;
 import io.github.marcofanti.aauth.personserver.ps.PersonTokenLedger;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -108,5 +110,30 @@ class SqlPersonTokenLedgerTest {
                 .extracting(PersonTokenLedger.Issued::jti)
                 .containsExactly("up");
         assertThat(ledger.findBySubject("https://u.example", "x")).isEmpty();
+    }
+
+    @Test
+    void purgingDropsExpiredPersonTokensWithTheirLinks() {
+        for (PersonTokenLedger ledger :
+                List.of(new MemoryPersonTokenLedger(), new SqlPersonTokenLedger(db.dataSource()))) {
+            ledger.recordIssued(
+                    new PersonTokenLedger.Issued("old", "agent", "user", "https://a.example", "s", NOW - 1));
+            ledger.recordIssued(
+                    new PersonTokenLedger.Issued("new", "agent", "user", "https://a.example", "s", NOW + 600));
+            ledger.recordPresentation("old", "https://as.example", "jkt");
+            ledger.recordPresentation("new", "https://as.example", "jkt");
+            ledger.recordUpstream("old", "https://up.example", "u-1");
+            ledger.recordUpstream("new", "https://up.example", "u-1");
+
+            ledger.purgeExpired(NOW);
+
+            assertThat(ledger.findByJti("old")).isNull();
+            assertThat(ledger.presentations("old")).isEmpty();
+            assertThat(ledger.findByJti("new")).isNotNull();
+            assertThat(ledger.presentations("new")).hasSize(1);
+            assertThat(ledger.issuedFromUpstream("https://up.example", "u-1"))
+                    .extracting(PersonTokenLedger.Issued::jti)
+                    .containsExactly("new");
+        }
     }
 }

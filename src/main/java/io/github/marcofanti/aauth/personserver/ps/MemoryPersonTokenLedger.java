@@ -14,6 +14,7 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
     private final Map<String, Issued> issued = new LinkedHashMap<>();
     private final Map<String, Map<String, Presentation>> presentations = new LinkedHashMap<>();
     private final Map<String, String> upstreams = new LinkedHashMap<>();
+    private final ExpiredRecords expired = new ExpiredRecords();
 
     private static String approvalKey(String person, String resource) {
         return person + "\u0000" + MissionUtils.stripTrailingSlash(resource);
@@ -32,6 +33,10 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
     @Override
     public synchronized void recordIssued(Issued record) {
         issued.put(record.jti(), record);
+        long cutoff = expired.cutoffIfDue();
+        if (cutoff >= 0) {
+            purgeExpired(cutoff);
+        }
     }
 
     @Override
@@ -108,5 +113,13 @@ public final class MemoryPersonTokenLedger implements PersonTokenLedger {
             }
         }
         return resources.size();
+    }
+
+    @Override
+    public synchronized void purgeExpired(long cutoffEpochSeconds) {
+        Set<String> gone = new HashSet<>();
+        issued.values().removeIf(record -> record.exp() <= cutoffEpochSeconds && gone.add(record.jti()));
+        presentations.keySet().removeAll(gone);
+        upstreams.keySet().removeAll(gone);
     }
 }

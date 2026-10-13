@@ -3,6 +3,7 @@ package io.github.marcofanti.aauth.personserver.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.marcofanti.aauth.personserver.model.TokenRequest;
+import io.github.marcofanti.aauth.personserver.ps.ExpiredRecords;
 import io.github.marcofanti.aauth.personserver.ps.MemoryRevocationStore;
 import io.github.marcofanti.aauth.personserver.ps.PendingRecord;
 import io.github.marcofanti.aauth.personserver.ps.RevocationStore;
@@ -17,6 +18,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** Revocation state keyed by (iss, jti) behaves the same in memory and in SQL (§11.12.1). */
 class SqlRevocationStoreTest {
+
+    private static final long NOW = java.time.Instant.now().getEpochSecond();
+    private static final long LATER = NOW + 3600;
 
     @TempDir
     Path tempDir;
@@ -41,8 +45,8 @@ class SqlRevocationStoreTest {
     @Test
     void revocationsAreKeyedByIssuerAndJti() {
         forBoth(store -> {
-            store.revoke("https://ap.example/", "t-1", 100);
-            store.revoke("https://ap.example", "t-1", 100);
+            store.revoke("https://ap.example/", "t-1", LATER);
+            store.revoke("https://ap.example", "t-1", LATER);
 
             assertThat(store.isRevoked("https://ap.example", "t-1")).isTrue();
             assertThat(store.isRevoked("https://ap.example/", "t-1")).isTrue();
@@ -56,8 +60,8 @@ class SqlRevocationStoreTest {
     @Test
     void agentTokenRecordsKeepTheFirstSub() {
         forBoth(store -> {
-            store.recordAgentToken("https://ap.example", "a-1", "aauth:planner@ap.example", 100);
-            store.recordAgentToken("https://ap.example/", "a-1", "aauth:other@ap.example", 100);
+            store.recordAgentToken("https://ap.example", "a-1", "aauth:planner@ap.example", LATER);
+            store.recordAgentToken("https://ap.example/", "a-1", "aauth:other@ap.example", LATER);
 
             assertThat(store.agentSub("https://ap.example", "a-1")).isEqualTo("aauth:planner@ap.example");
             assertThat(store.agentSub("https://ap.example", "a-2")).isNull();
@@ -123,6 +127,34 @@ class SqlRevocationStoreTest {
             store.recordResourceIssuer("https://rs.example");
             assertThat(store.isKnownResourceIssuer("https://rs.example")).isTrue();
             assertThat(store.isKnownResourceIssuer("https://rs.example/")).isTrue();
+        });
+    }
+
+    @Test
+    void purgingDropsRecordsExpiredAtTheCutoff() {
+        forBoth(store -> {
+            store.revoke("https://ap.example", "old", NOW - 1);
+            store.revoke("https://ap.example", "new", NOW + 1);
+            store.recordAgentToken("https://ap.example", "a-old", "aauth:planner@ap.example", NOW - 1);
+            store.recordAgentToken("https://ap.example", "a-new", "aauth:planner@ap.example", NOW + 1);
+
+            store.purgeExpired(NOW);
+
+            assertThat(store.isRevoked("https://ap.example", "old")).isFalse();
+            assertThat(store.isRevoked("https://ap.example", "new")).isTrue();
+            assertThat(store.agentSub("https://ap.example", "a-old")).isNull();
+            assertThat(store.agentSub("https://ap.example", "a-new")).isEqualTo("aauth:planner@ap.example");
+        });
+    }
+
+    @Test
+    void aWritePurgesRecordsPastTheGraceAfterExp() {
+        forBoth(store -> {
+            store.revoke("https://ap.example", "long-expired", NOW - ExpiredRecords.GRACE_SECONDS - 10);
+            store.revoke("https://ap.example", "just-expired", NOW - 1);
+
+            assertThat(store.isRevoked("https://ap.example", "long-expired")).isFalse();
+            assertThat(store.isRevoked("https://ap.example", "just-expired")).isTrue();
         });
     }
 }
