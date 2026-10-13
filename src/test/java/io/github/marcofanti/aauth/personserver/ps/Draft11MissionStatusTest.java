@@ -48,15 +48,17 @@ class Draft11MissionStatusTest {
         Draft11MissionStatus status = new Draft11MissionStatus(backend);
 
         assertThatThrownBy(() -> status.requireActive(expired))
-                .isInstanceOfSatisfying(MissionTerminatedException.class, e -> assertThat(e.reason())
-                        .isEqualTo("expired"));
+                .isInstanceOfSatisfying(
+                        MissionTerminatedException.class,
+                        e -> assertThat(e.reason()).isEqualTo("expired"));
         Mission stored = backend.getMission(expired.s256());
         assertThat(stored.state()).isEqualTo(MissionState.TERMINATED);
 
         // Terminated is final and keeps its reason on every later check.
         assertThatThrownBy(() -> status.requireActive(stored))
-                .isInstanceOfSatisfying(MissionTerminatedException.class, e -> assertThat(e.reason())
-                        .isEqualTo("expired"));
+                .isInstanceOfSatisfying(
+                        MissionTerminatedException.class,
+                        e -> assertThat(e.reason()).isEqualTo("expired"));
         status.terminate(stored, "revoked");
         assertThat(status.terminationReason(expired.s256())).isEqualTo("expired");
     }
