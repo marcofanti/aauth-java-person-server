@@ -85,6 +85,9 @@ public final class DatabaseUrls {
                     + "created_at TEXT NOT NULL, expires_at TEXT NOT NULL, status TEXT NOT NULL)",
             "CREATE TABLE IF NOT EXISTS as_binding (agent_id TEXT PRIMARY KEY, agent_name TEXT NOT NULL, "
                     + "created_at TEXT NOT NULL, revoked BOOLEAN NOT NULL DEFAULT FALSE)",
+            "CREATE TABLE IF NOT EXISTS as_issued_agent_token (jti TEXT PRIMARY KEY, agent_id TEXT NOT NULL, "
+                    + "ps TEXT NOT NULL, exp BIGINT NOT NULL)",
+            "CREATE INDEX IF NOT EXISTS as_issued_agent_token_agent ON as_issued_agent_token (agent_id)",
             "CREATE TABLE IF NOT EXISTS as_binding_jkt (jkt TEXT PRIMARY KEY, agent_id TEXT NOT NULL, "
                     + "position BIGINT NOT NULL DEFAULT 0)",
         };

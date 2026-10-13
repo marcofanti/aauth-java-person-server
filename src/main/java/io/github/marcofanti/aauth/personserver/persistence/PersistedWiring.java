@@ -118,6 +118,7 @@ public final class PersistedWiring {
                 new SqlAgentServerStores.Bindings(dataSource),
                 new ReplayCache(options.signatureWindow()),
                 signing,
-                AsContainer.tokenRevocation(options.issuer(), signing));
+                AsContainer.tokenRevocation(
+                        options.issuer(), signing, new SqlAgentServerStores.IssuedAgentTokens(dataSource)));
     }
 }

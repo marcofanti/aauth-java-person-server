@@ -23,7 +23,8 @@ class AgentTokenRevocationTest {
 
     private final FakeRevocationResource ps = new FakeRevocationResource("aauth-person.json");
     private final AsSigningService signing = new AsSigningService(ISSUER, null, null, 3600, ps.origin());
-    private final AgentTokenRevocation revocation = AsContainer.tokenRevocation(ISSUER, signing);
+    private final AgentTokenRevocation revocation =
+            AsContainer.tokenRevocation(ISSUER, signing, new MemoryIssuedAgentTokenStore());
 
     @AfterEach
     void stop() {

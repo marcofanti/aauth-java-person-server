@@ -196,3 +196,7 @@ and the derived `aauth-java-person-server.pptx`.
   needs them (revoked resource tokens end their pendings, upstream expiry ends chained ones).
 - **Boot `DataSourceAutoConfiguration` excluded**: database mode is driven by
   `AAUTH_DATABASE_URL`, not `spring.datasource.*`.
+- **Agent Server issued-token records in SQL** (2026-10-13): `AgentTokenRevocation` keeps the
+  agent tokens it minted in `IssuedAgentTokenStore` (`as_issued_agent_token` in SQL mode), so a
+  binding revoked after a restart still revokes the tokens minted before it. The Python
+  reference has no Agent Server token revocation, so there is no parity counterpart.
