@@ -206,3 +206,6 @@ and the derived `aauth-java-person-server.pptx`.
 - **Deferred revocation** (2026-10-13): `/revoke` answers 202 once the cascade outlasts its
   20 s hold (or `Prefer: wait`), and the PS follows downstream 202s instead of counting them as
   `revocation_unavailable` (§11.12.3). Pending revocations are kept in memory only.
+- **Egress DNS pinning** (2026-10-13): `EgressResolverProvider` pins each validated host to the
+  addresses `Egress` checked, closing the DNS-rebinding window between the check and the
+  connection. The server warns at startup if the provider is not loaded.
