@@ -18,6 +18,7 @@ TLS_DIR="${HOME}/.local/share/uma-lab-tls"
 
 AAUTH_PS_PUBLIC_ORIGIN=https://ps.uma.lab \
   AAUTH_AS_PUBLIC_ORIGIN=https://as.uma.lab \
+  AAUTH_PS_EGRESS_ALLOW_HOSTS="*.uma.lab" \
   AAUTH_PS_ADMIN_TOKEN=mytoken \
   AAUTH_AS_PERSON_TOKEN=mytoken \
   AAUTH_PS_INSECURE_DEV=false \

@@ -186,10 +186,16 @@ the AS's origin. Outbound revocation and federation use 5-second timeouts with n
 cascades run on virtual threads, bounded at 20 s. SQL revocation and ledger writes are
 `ON CONFLICT DO NOTHING` upserts.
 
-Known, not fixed: the PS still fetches metadata and JWKS from URLs an authenticated agent can
-influence (resource `iss`, four-party `aud`, person-token `resource`), as the draft-10 code did
-for resource tokens; deployments should restrict egress. Memory-mode revocation records are not
-purged after `exp`.
+Egress (2026-10-13): agents can influence the URLs the PS fetches (resource `iss`, four-party
+`aud`, person-token `resource`). Every outbound request now goes through `Egress`:
+- HTTPS only, with no redirects.
+- The host must not resolve to an internal address (loopback, private, link-local, CGNAT,
+  unique-local, IPv4-mapped) unless it matches `AAUTH_PS_EGRESS_ALLOW_HOSTS`.
+- Bodies are capped at 1 MiB, with 5-second timeouts.
+
+Left open: the HTTP client resolves the host again after the check, so DNS rebinding is not
+covered; deployments should still restrict egress at the network layer. Memory-mode
+revocation records are not purged after `exp`.
 
 Local HTTPS (2026-10-12): the library is being reworked to port the Python 0.5.0 draft-11
 reference, fully strict. Server identifiers (iss, aud, ps) must then be lowercase HTTPS origins

@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Requests a server makes in its own right (§11.3.2): signed under the {@code jwks_uri} scheme
+ * Requests a server makes in its own right (§11.3.2), through {@link Egress}: signed under the
+ * {@code jwks_uri} scheme
  * with {@code id} = its issuer and {@code dwk} = its metadata document, covering
  * {@code content-digest} and {@code content-type} whenever there is a body (§11.3.3).
  */
@@ -54,8 +55,7 @@ public final class ServerHttp {
         Map<String, String> headers = new LinkedHashMap<>(signedHeaders("POST", url, bytes));
         headers.put("Content-Type", JSON);
         return send(
-                HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
-                        .POST(HttpRequest.BodyPublishers.ofByteArray(bytes)),
+                HttpRequest.newBuilder(Egress.target(url)).POST(HttpRequest.BodyPublishers.ofByteArray(bytes)),
                 headers);
     }
 
@@ -69,12 +69,12 @@ public final class ServerHttp {
         HttpResponse<String> response;
         try {
             response = client.send(
-                    HttpRequest.newBuilder(HostRoutes.route(URI.create(url)))
+                    HttpRequest.newBuilder(Egress.target(url))
                             .header("Accept", JSON)
                             .timeout(TIMEOUT)
                             .GET()
                             .build(),
-                    HttpResponse.BodyHandlers.ofString());
+                    Egress.cappedBody());
         } catch (IOException e) {
             throw new IllegalArgumentException("failed to fetch " + url + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {
@@ -89,7 +89,7 @@ public final class ServerHttp {
 
     /** Signed GET with no body (pending-URL polling, §11.8). */
     public HttpResponse<String> get(String url) throws IOException, InterruptedException {
-        return send(HttpRequest.newBuilder(HostRoutes.route(URI.create(url))).GET(), signedHeaders("GET", url, null));
+        return send(HttpRequest.newBuilder(Egress.target(url)).GET(), signedHeaders("GET", url, null));
     }
 
     private Map<String, String> signedHeaders(String method, String url, byte[] body) {
@@ -112,6 +112,6 @@ public final class ServerHttp {
                 request.header(name, value);
             }
         });
-        return client.send(request.timeout(TIMEOUT).build(), HttpResponse.BodyHandlers.ofString());
+        return client.send(request.timeout(TIMEOUT).build(), Egress.cappedBody());
     }
 }

@@ -85,6 +85,12 @@ Environment variables are the Python server's, unchanged: `AAUTH_PS_*`, `AAUTH_A
 [Python README](https://github.com/christian-posta/aauth-person-server#readme) for the
 full tables.
 
+One variable is Java-only. `AAUTH_PS_EGRESS_ALLOW_HOSTS` takes comma-separated host names or
+`*.suffix` wildcards. Outbound fetches (metadata, JWKS, federation, revocation) go only to
+HTTPS URLs whose host does not resolve to a loopback, private, link-local, CGNAT or
+unique-local address. Listed hosts skip that check. The run scripts set `*.uma.lab` for the
+local HTTPS setup.
+
 Portal UI: `https://ps.uma.lab/ui/index.html` (sign in with the admin/person token).
 
 ## Demo

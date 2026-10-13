@@ -26,7 +26,9 @@ class JwksDiscoveryTest {
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        origin = "http://127.0.0.1:" + server.getAddress().getPort();
+        // A port-less HTTPS identifier routed to the local socket, as Egress requires.
+        origin = "https://jwks" + server.getAddress().getPort() + ".example";
+        HostRoutes.register(origin, "http://127.0.0.1:" + server.getAddress().getPort());
         serveJson("/.well-known/aauth-resource.json", Map.of("jwks_uri", origin + "/jwks.json"));
         serveJson("/.well-known/aauth-agent.json", Map.of("jwks_uri", origin + "/jwks.json"));
         serveJson("/jwks.json", JWKS);
